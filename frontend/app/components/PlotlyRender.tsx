@@ -12,9 +12,10 @@ interface PlotlyRenderProps {
   layout: any;
   frames?: any[];
   config?: any;
+  onChartClick?: (point: any) => void;
 }
 
-export default function PlotlyRender({ data, layout, frames, config }: PlotlyRenderProps) {
+export default function PlotlyRender({ data, layout, frames, config, onChartClick }: PlotlyRenderProps) {
   // Merge layout options for responsive and modern aesthetics
   const enhancedLayout = {
     ...layout,
@@ -64,6 +65,11 @@ export default function PlotlyRender({ data, layout, frames, config }: PlotlyRen
         config={defaultConfig}
         style={{ width: '100%', height: '100%' }}
         useResizeHandler={true}
+        onClick={(clickData: any) => {
+          if (onChartClick && clickData && clickData.points && clickData.points.length > 0) {
+            onChartClick(clickData.points[0]);
+          }
+        }}
       />
     </div>
   );

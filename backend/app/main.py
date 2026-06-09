@@ -56,6 +56,17 @@ async def generate_chart(request: ChartRequest):
         else:
             raise ValueError("Either 'file_path' or 'tables' must be provided in the request.")
 
+        # Apply filters to DataFrames if provided
+        if request.filters:
+            logger.info(f"Applying filters to dataset: {request.filters}")
+            for col, val in request.filters.items():
+                for tbl_name, df in data_model.tables.items():
+                    if col in df.columns:
+                        if isinstance(val, list):
+                            data_model.tables[tbl_name] = df[df[col].isin(val)]
+                        else:
+                            data_model.tables[tbl_name] = df[df[col] == val]
+
         # 2. Extract schema summary
         schema_summary = data_model.get_schema_summary()
         logger.debug(f"Generated schema summary:\n{schema_summary}")

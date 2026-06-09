@@ -13,6 +13,10 @@ class ChartRequest(BaseModel):
         None, 
         description="Dictionary defining foreign key mappings (e.g. {'Sales': ['product_id'], 'Products': ['id']})"
     )
+    filters: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Dictionary of filters to slice the dataset prior to code execution (e.g. {'Region': 'North'})"
+    )
 
 class ChartResponse(BaseModel):
     success: bool = Field(..., description="Whether the chart was successfully generated and executed")

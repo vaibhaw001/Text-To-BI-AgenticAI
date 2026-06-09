@@ -20,9 +20,10 @@ const PlotlyRender = dynamic(() => import('./PlotlyRender'), {
 
 interface ChartWidgetProps {
   chartJson: any;
+  onChartClick?: (point: any) => void;
 }
 
-export default function ChartWidget({ chartJson }: ChartWidgetProps) {
+export default function ChartWidget({ chartJson, onChartClick }: ChartWidgetProps) {
   if (!chartJson) {
     return (
       <div className="w-full h-full flex items-center justify-center text-zinc-500 text-sm">
@@ -37,6 +38,7 @@ export default function ChartWidget({ chartJson }: ChartWidgetProps) {
       layout={chartJson.layout || {}}
       frames={chartJson.frames}
       config={chartJson.config}
+      onChartClick={onChartClick}
     />
   );
 }

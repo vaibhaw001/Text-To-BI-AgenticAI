@@ -199,5 +199,38 @@ fig = px.bar(df, x='Category', y='Sales')
             self.assertIn("ValueError", data["history"][0]["error"]["message"])
             self.assertEqual(data["history"][1]["status"], "success")
 
+    @patch('app.core.agent.ChatOpenAI')
+    def test_api_endpoint_with_filters(self, mock_chat_openai):
+        mock_llm_instance = MagicMock()
+        mock_chat_openai.return_value = mock_llm_instance
+        
+        mock_response = MagicMock()
+        mock_response.content = """
+```python
+import plotly.express as px
+fig = px.bar(df, x='Category', y='Sales')
+```
+"""
+        mock_response_insights = MagicMock()
+        mock_response_insights.content = "Plotted bar chart for Category vs Sales under filters."
+        mock_llm_instance.invoke.side_effect = [mock_response, mock_response_insights]
+
+        client = TestClient(app)
+        
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test_key", "LLM_PROVIDER": "openai"}):
+            response = client.post(
+                "/api/generate-chart",
+                json={
+                    "prompt": "Show me sales by category",
+                    "file_path": self.csv_path,
+                    "filters": {"Region": "North"}
+                }
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data["success"])
+            self.assertIsNotNone(data["chart_json"])
+
 if __name__ == "__main__":
     unittest.main()

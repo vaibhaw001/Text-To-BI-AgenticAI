@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Responsive, useContainerWidth } from 'react-grid-layout';
 import ChartWidget from './components/ChartWidget';
 
@@ -30,6 +30,9 @@ export default function Dashboard() {
   // Track active tab view for each widget card ('chart' | 'insights' | 'code')
   const [widgetTabs, setWidgetTabs] = useState<Record<string, 'chart' | 'insights' | 'code'>>({});
 
+  // Global filters representing Power BI slicers & Tableau cross-filtering
+  const [globalFilters, setGlobalFilters] = useState<Record<string, any>>({});
+
   const getWidgetTab = (id: string) => widgetTabs[id] || 'chart';
   const setWidgetTab = (id: string, tab: 'chart' | 'insights' | 'code') => {
     setWidgetTabs(prev => ({ ...prev, [id]: tab }));
@@ -44,6 +47,67 @@ export default function Dashboard() {
     { name: 'Sales', path: 'f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv' }
   ]);
   const [relationshipsInput, setRelationshipsInput] = useState<{ from_table: string; from_col: string; to_table: string; to_col: string }[]>([]);
+
+  // Trigger reloading of all active widgets whenever the global filter changes
+  useEffect(() => {
+    if (widgets.length > 0) {
+      refreshAllWidgets(globalFilters);
+    }
+  }, [globalFilters]);
+
+  const refreshAllWidgets = async (activeFilters: Record<string, any>) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const updatedWidgets = await Promise.all(widgets.map(async (w) => {
+        const payload: any = {
+          prompt: w.prompt,
+          filters: activeFilters,
+        };
+
+        if (useMultipleTables) {
+          payload.tables = tablesInput.map(t => ({ name: t.name, path: t.path }));
+          if (relationshipsInput.length > 0) {
+            const apiRel: Record<string, string[]> = {};
+            relationshipsInput.forEach(r => {
+              if (r.from_table && r.from_col) apiRel[r.from_table] = [r.from_col];
+              if (r.to_table && r.to_col) apiRel[r.to_table] = [r.to_col];
+            });
+            payload.relationships = apiRel;
+          }
+        } else {
+          payload.file_path = filePath;
+        }
+
+        const response = await fetch('http://127.0.0.1:8000/api/generate-chart', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to update chart.');
+        }
+
+        return {
+          ...w,
+          chartJson: data.chart_json,
+          code: data.code,
+          insights: data.insights,
+        };
+      }));
+
+      setWidgets(updatedWidgets);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to apply filter to dashboard charts.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLayoutChange = (currentLayout: any, allLayouts: any) => {
     setLayouts(allLayouts);
@@ -74,20 +138,16 @@ export default function Dashboard() {
     try {
       const payload: any = {
         prompt: prompt,
+        filters: globalFilters, // Pass active filter states
       };
 
       if (useMultipleTables) {
         payload.tables = tablesInput.map(t => ({ name: t.name, path: t.path }));
-        // Convert array relationship back to API dict schema if needed, or map directly
         if (relationshipsInput.length > 0) {
           const apiRel: Record<string, string[]> = {};
           relationshipsInput.forEach(r => {
-            if (r.from_table && r.from_col) {
-              apiRel[r.from_table] = [r.from_col];
-            }
-            if (r.to_table && r.to_col) {
-              apiRel[r.to_table] = [r.to_col];
-            }
+            if (r.from_table && r.from_col) apiRel[r.from_table] = [r.from_col];
+            if (r.to_table && r.to_col) apiRel[r.to_table] = [r.to_col];
           });
           payload.relationships = apiRel;
         }
@@ -165,6 +225,53 @@ export default function Dashboard() {
     });
   };
 
+  // Tableau Cross-Filtering: Capture clicks on Plotly points and apply as a dashboard filter
+  const handleChartClick = (point: any) => {
+    console.log("Chart clicked:", point);
+    
+    // 1. Try to extract column name from X or Y axis titles (which holds DF column names)
+    let colName = point.xaxis?.title?.text;
+    let val = point.x;
+
+    if (point.yaxis?.title?.text && isNaN(Number(point.y))) {
+      colName = point.yaxis.title.text;
+      val = point.y;
+    }
+
+    // Pie chart fallback
+    if (!colName && point.label) {
+      colName = point.data?.labelsrc || 'Category';
+      val = point.label;
+    }
+
+    if (!colName) {
+      // General fallback
+      colName = 'Category';
+    }
+
+    // Clean column name (removing HTML formatting Plotly sometimes adds)
+    colName = colName.replace(/<[^>]*>/g, '').trim();
+    
+    if (colName && val !== undefined) {
+      setGlobalFilters(prev => ({
+        ...prev,
+        [colName]: val
+      }));
+    }
+  };
+
+  const handleClearFilter = (col: string) => {
+    setGlobalFilters(prev => {
+      const copy = { ...prev };
+      delete copy[col];
+      return copy;
+    });
+  };
+
+  const handleClearAllFilters = () => {
+    setGlobalFilters({});
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Top Navbar */}
@@ -232,6 +339,43 @@ export default function Dashboard() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        
+        {/* Power BI-style Active Slicers Pane */}
+        {Object.keys(globalFilters).length > 0 && (
+          <div className="mb-6 p-4 rounded-xl border border-indigo-500/20 bg-indigo-950/10 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fadeIn shadow-lg shadow-indigo-500/5">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-indigo-400 flex items-center gap-1 mr-1">
+                <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                ⚡ Interactive Filters (Tableau Cross-Filter):
+              </span>
+              {Object.entries(globalFilters).map(([col, val]) => (
+                <span 
+                  key={col} 
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-200 shadow-sm"
+                >
+                  <span className="text-zinc-400">{col}:</span>
+                  <span className="font-semibold text-white">{String(val)}</span>
+                  <button 
+                    type="button"
+                    onClick={() => handleClearFilter(col)} 
+                    className="hover:text-red-400 font-bold ml-1 transition-colors text-sm leading-none"
+                    title="Remove Filter"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <button 
+              type="button"
+              onClick={handleClearAllFilters}
+              className="text-xs text-zinc-400 hover:text-white underline font-semibold transition-colors shrink-0"
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
+
         {/* Advanced Relationship modeling panel */}
         {useMultipleTables && (
           <div className="mb-6 p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-sm animate-fadeIn">
@@ -406,7 +550,7 @@ export default function Dashboard() {
               {widgets.map((w) => (
                 <div 
                   key={w.id} 
-                  className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-md overflow-hidden hover:border-zinc-700/80 transition-all select-none shadow-md group"
+                  className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-md overflow-hidden hover:border-zinc-700/80 transition-all select-none shadow-md group animate-scaleIn"
                 >
                   {/* Widget Header */}
                   <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/85 px-4 py-2 cursor-default">
@@ -420,6 +564,7 @@ export default function Dashboard() {
                     </div>
                     
                     <button
+                      type="button"
                       onClick={() => handleDeleteWidget(w.id)}
                       className="text-zinc-500 hover:text-red-400 transition-colors p-1"
                       title="Remove Widget"
@@ -433,12 +578,15 @@ export default function Dashboard() {
                     <div className="flex-1 w-full relative overflow-hidden">
                       {getWidgetTab(w.id) === 'chart' && (
                         <div className="w-full h-full p-2">
-                          <ChartWidget chartJson={w.chartJson} />
+                          <ChartWidget 
+                            chartJson={w.chartJson} 
+                            onChartClick={handleChartClick} // Tableau Cross-Filtering trigger
+                          />
                         </div>
                       )}
                       
                       {getWidgetTab(w.id) === 'insights' && (
-                        <div className="w-full h-full p-4 overflow-y-auto text-xs text-zinc-300 leading-relaxed flex flex-col justify-start">
+                        <div className="w-full h-full p-4 overflow-y-auto text-xs text-zinc-300 leading-relaxed flex flex-col justify-start select-text">
                           <span className="font-bold text-zinc-400 block mb-2">💡 AI Analytical Insights:</span>
                           <p>{w.insights || "No insights generated for this visualization."}</p>
                         </div>
