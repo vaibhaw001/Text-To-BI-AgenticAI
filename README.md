@@ -2,7 +2,31 @@
 
 An advanced, agentic, natural language Business Intelligence (BI) platform designed to mimic **Power BI's relational data modeling** and **Tableau's visual grammar** using an LLM agent workflow.
 
-This application allows users to query single or multiple datasets using plain English, automatically resolves relationships (joins), generates interactive Plotly visualizations, and renders them inside a responsive, drag-and-drop dashboard canvas.
+This application allows users to query single or multiple datasets using plain English, automatically resolves relationships (joins), generates interactive Plotly visualizations, and renders them inside a responsive, drag-and-drop dashboard canvas alongside AI-generated analytical insights.
+
+---
+
+## 🚀 Key Features
+
+### 1. Natural Language Data Insights (AI Summaries)
+- **Data Trace Extraction**: The backend extracts the plotted coordinates (aggregated X/Y coordinates or pie slices) directly from the Plotly figure traces (not the raw database, keeping transaction data secure).
+- **Secondary LLM Summarization**: Passes the plotted data to the LLM to generate a concise 2-3 sentence analytical summary.
+- **Inspectable BI Cards**: The frontend dashboard widgets feature a tab bar at the bottom allowing users to toggle between:
+  - **📊 Chart**: The interactive React-Plotly visualization.
+  - **💡 Insights**: The AI-generated descriptive summary of findings.
+  - **💻 Code**: The raw Python code that generated the chart.
+
+### 2. Auto-Relationship Detection (Power BI Style)
+- **Zero-Config Joins**: If relationships are left blank, the engine automatically resolves how tables connect using two heuristics:
+  - **Exact Key Matching**: Columns with matching names (e.g. `store_id`, `product_id`) across tables are mapped (ignoring generic column names like `date`, `name`, `id`).
+  - **Singular ID Substring Matching**: Automatically maps primary keys to foreign keys (e.g. mapping `Products.id` to `Sales.product_id` or `productid`).
+- The LLM receives this schema and automatically writes `pd.merge()` code to perform joins.
+
+### 3. Safe Execution Sandbox
+- Generated Python code is executed locally in a restricted sandbox context, limiting available builtins, pre-injecting data tables as variables, and strictly restricting imports (allowing only `pandas`, `plotly`, `numpy`, `datetime`, `json`, `math`).
+
+### 4. Self-Correction Loop
+- If execution fails (e.g., ValueError, KeyError), the backend catches the traceback error and feeds it back to the agent. It attempts self-correction up to 3 times before returning a failure.
 
 ---
 
@@ -12,15 +36,6 @@ This application allows users to query single or multiple datasets using plain E
 - **Backend**: Python (FastAPI), Pandas/SQL, [LangChain](https://github.com/langchain-ai/langchain)
 - **Agent / LLM**: Google Gemini (`gemini-3.5-flash`) via LangChain Google GenAI
 - **Visualization Engine**: Plotly (Python generates the Plotly JSON schema, Next.js renders it client-side)
-
----
-
-## 📐 Architecture Rules & Security
-
-1. **Zero Raw Data to LLM**: The backend *never* sends raw data rows to the LLM. It only extracts and sends metadata: column names, data types, and a 3-row markdown sample table.
-2. **Grammar of Graphics**: The LLM agent acts as a visualization data scientist, mapping dimensions (categories, dates) and measures (numeric values) to appropriate Plotly visual channels (X, Y, colors, sizes).
-3. **Execution Sandbox**: Generated Python code is executed locally in a restricted sandbox context, limiting available builtins, pre-injecting data tables as variables, and strictly restricting imports (allowing only `pandas`, `plotly`, `numpy`, `datetime`, `json`, `math`).
-4. **Self-Correction Retry Loop**: If the execution throws a syntax, value, or runtime error (e.g. invalid columns), the backend catches the traceback error and feeds it back to the Gemini agent. It attempts self-correction up to 3 times before returning a failure.
 
 ---
 
@@ -61,15 +76,14 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to view the 
 The application supports multi-table schemas:
 1. Click the **Model** toggle in the search bar.
 2. Configure multiple dataset tables (e.g. `Sales` at `F:/path/to/sales.csv`, `Products` at `F:/path/to/products.csv`).
-3. Define the joining key relationships (e.g., table `Sales` joins using `product_id` to table `Products` using `id`).
+3. Define the joining key relationships (or leave them blank to use automatic relationship heuristics).
 4. Enter your query (e.g. *"Show sales by product category as a bar chart"*). 
-5. The LLM agent reads this relational mapping, automatically writes the Pandas `pd.merge()` code to join the tables, and creates the chart.
 
 ---
 
 ## 🧪 Testing
 
-A comprehensive unit test suite is included to verify schema extraction, code execution sandboxing, API endpoints, and the self-correction retry loop:
+A comprehensive unit test suite is included to verify schema extraction, code execution sandboxing, API endpoints, auto-relationship detection, and the self-correction retry loop:
 ```bash
 cd backend
 .\venv\Scripts\python -m unittest tests/test_backend.py
