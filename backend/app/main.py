@@ -1,7 +1,8 @@
 import os
 import json
 import logging
-from fastapi import FastAPI, HTTPException
+import shutil
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -33,6 +34,33 @@ app.add_middleware(
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "text-to-bi-backend"}
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    logger.info(f"Received file upload request: {file.filename}")
+    try:
+        # Create data directory under backend
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        upload_dir = os.path.join(backend_dir, "data")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        file_path = os.path.join(upload_dir, file.filename)
+        
+        # Save file to disk
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        absolute_path = os.path.abspath(file_path)
+        logger.info(f"File saved successfully to {absolute_path}")
+        
+        return {
+            "success": True,
+            "file_name": file.filename,
+            "file_path": absolute_path
+        }
+    except Exception as e:
+        logger.error(f"Error during file upload: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
 @app.post("/api/generate-chart", response_model=ChartResponse)
 async def generate_chart(request: ChartRequest):

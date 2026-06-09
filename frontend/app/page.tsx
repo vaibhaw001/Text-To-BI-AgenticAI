@@ -22,6 +22,8 @@ interface Widget {
 export default function Dashboard() {
   const [prompt, setPrompt] = useState('');
   const [filePath, setFilePath] = useState('f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>('sample_sales.csv');
+  const [uploading, setUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>([]);
@@ -43,10 +45,80 @@ export default function Dashboard() {
 
   // Custom relationship builder states (Power BI style)
   const [useMultipleTables, setUseMultipleTables] = useState(false);
-  const [tablesInput, setTablesInput] = useState<{ name: string; path: string }[]>([
-    { name: 'Sales', path: 'f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv' }
+  const [tablesInput, setTablesInput] = useState<{ name: string; path: string; fileName?: string }[]>([
+    { name: 'Sales', path: 'f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv', fileName: 'sample_sales.csv' }
   ]);
   const [relationshipsInput, setRelationshipsInput] = useState<{ from_table: string; from_col: string; to_table: string; to_col: string }[]>([]);
+  const [multiUploading, setMultiUploading] = useState<Record<number, boolean>>({});
+
+  const handleFileUpload = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('http://127.0.0.1:8000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await res.json();
+      if (data.success && data.file_path) {
+        setFilePath(data.file_path);
+        setUploadedFileName(file.name);
+      } else {
+        throw new Error('Upload failed on server');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleMultiTableFileUpload = async (idx: number, file: File) => {
+    setMultiUploading(prev => ({ ...prev, [idx]: true }));
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('http://127.0.0.1:8000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await res.json();
+      if (data.success && data.file_path) {
+        const copy = [...tablesInput];
+        copy[idx].path = data.file_path;
+        copy[idx].fileName = file.name;
+        // Auto-populate table name from filename if name is empty
+        if (!copy[idx].name) {
+          const cleanName = file.name.split('.')[0].replace(/[^a-zA-Z0-9]/g, '');
+          copy[idx].name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+        }
+        setTablesInput(copy);
+      } else {
+        throw new Error('Upload failed on server');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || `Failed to upload file for table ${idx + 1}`);
+    } finally {
+      setMultiUploading(prev => ({ ...prev, [idx]: false }));
+    }
+  };
 
   // Trigger reloading of all active widgets whenever the global filter changes
   useEffect(() => {
@@ -309,14 +381,41 @@ export default function Dashboard() {
             </div>
 
             {!useMultipleTables && (
-              <input
-                type="text"
-                placeholder="Dataset file path..."
-                value={filePath}
-                onChange={(e) => setFilePath(e.target.value)}
-                className="w-full sm:w-64 px-3 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-xs text-zinc-300 placeholder-zinc-650 backdrop-blur-sm"
-                disabled={isLoading}
-              />
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="file"
+                  id="single-file-upload"
+                  className="hidden"
+                  accept=".csv,.xlsx,.xls"
+                  disabled={isLoading || uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                  }}
+                />
+                <label
+                  htmlFor="single-file-upload"
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 text-xs text-zinc-300 backdrop-blur-sm cursor-pointer hover:bg-zinc-850 hover:border-zinc-700 transition-all ${uploading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  <span className="truncate max-w-[170px]">
+                    {uploading ? (
+                      <span className="flex items-center gap-1">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-zinc-500 border-t-white"></span>
+                        Uploading...
+                      </span>
+                    ) : uploadedFileName ? (
+                      `📁 ${uploadedFileName}`
+                    ) : (
+                      '📁 Upload Dataset'
+                    )}
+                  </span>
+                  {!uploading && (
+                    <span className="text-[10px] text-purple-400 font-medium px-1.5 py-0.5 rounded bg-purple-950/40 border border-purple-800/30">
+                      Browse
+                    </span>
+                  )}
+                </label>
+              </div>
             )}
 
             <button
@@ -403,17 +502,41 @@ export default function Dashboard() {
                       }}
                       className="w-1/3 px-2 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs text-white"
                     />
-                    <input 
-                      type="text" 
-                      placeholder="CSV File Path" 
-                      value={t.path}
-                      onChange={(e) => {
-                        const copy = [...tablesInput];
-                        copy[idx].path = e.target.value;
-                        setTablesInput(copy);
-                      }}
-                      className="flex-1 px-2 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs text-zinc-300"
-                    />
+                    <div className="flex-1 relative">
+                      <input
+                        type="file"
+                        id={`multi-file-upload-${idx}`}
+                        className="hidden"
+                        accept=".csv,.xlsx,.xls"
+                        disabled={isLoading || multiUploading[idx]}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleMultiTableFileUpload(idx, file);
+                        }}
+                      />
+                      <label
+                        htmlFor={`multi-file-upload-${idx}`}
+                        className={`w-full flex items-center justify-between px-2 py-1 rounded border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer hover:bg-zinc-900 hover:border-zinc-700 transition-all ${multiUploading[idx] ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      >
+                        <span className="truncate max-w-[150px]">
+                          {multiUploading[idx] ? (
+                            <span className="flex items-center gap-1">
+                              <span className="h-3 w-3 animate-spin rounded-full border border-zinc-550 border-t-white"></span>
+                              Uploading...
+                            </span>
+                          ) : t.fileName ? (
+                            `📁 ${t.fileName}`
+                          ) : (
+                            '📁 Select File'
+                          )}
+                        </span>
+                        {!multiUploading[idx] && (
+                          <span className="text-[10px] text-purple-400 font-medium px-1 rounded bg-purple-950/20">
+                            Upload
+                          </span>
+                        )}
+                      </label>
+                    </div>
                     <button 
                       type="button" 
                       onClick={() => setTablesInput(tablesInput.filter((_, i) => i !== idx))}
@@ -425,7 +548,7 @@ export default function Dashboard() {
                 ))}
                 <button
                   type="button"
-                  onClick={() => setTablesInput([...tablesInput, { name: '', path: '' }])}
+                  onClick={() => setTablesInput([...tablesInput, { name: '', path: '', fileName: '' }])}
                   className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 mt-1"
                 >
                   + Add Table

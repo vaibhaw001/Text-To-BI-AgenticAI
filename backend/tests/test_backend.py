@@ -232,5 +232,26 @@ fig = px.bar(df, x='Category', y='Sales')
             self.assertTrue(data["success"])
             self.assertIsNotNone(data["chart_json"])
 
+    def test_api_upload_file(self):
+        client = TestClient(app)
+        import io
+        csv_data = b"Category,Sales\nElectronics,100\nAppliances,200\n"
+        file = io.BytesIO(csv_data)
+        
+        response = client.post(
+            "/api/upload",
+            files={"file": ("test_upload_file.csv", file, "text/csv")}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["file_name"], "test_upload_file.csv")
+        self.assertTrue(os.path.exists(data["file_path"]))
+        
+        # Clean up the uploaded file
+        if os.path.exists(data["file_path"]):
+            os.remove(data["file_path"])
+
 if __name__ == "__main__":
     unittest.main()
