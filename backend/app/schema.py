@@ -18,5 +18,6 @@ class ChartResponse(BaseModel):
     success: bool = Field(..., description="Whether the chart was successfully generated and executed")
     chart_json: Optional[Dict[str, Any]] = Field(None, description="The Plotly JSON schema for the generated figure")
     code: Optional[str] = Field(None, description="The final Python code that successfully created the figure")
+    insights: Optional[str] = Field(None, description="AI-generated text analysis describing findings from the chart data")
     history: List[Dict[str, Any]] = Field(default_factory=list, description="Execution history with code attempts and tracebacks if any")
     error: Optional[str] = Field(None, description="Error message if the generation failed after all retries")

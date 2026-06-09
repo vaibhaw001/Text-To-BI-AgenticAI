@@ -22,7 +22,7 @@ export default function PlotlyRender({ data, layout, frames, config }: PlotlyRen
     paper_bgcolor: 'rgba(0,0,0,0)', // transparent widget background
     plot_bgcolor: 'rgba(0,0,0,0)',  // transparent plot area
     font: {
-      family: 'var(--font-inter), sans-serif',
+      family: 'system-ui, -apple-system, sans-serif',
       color: '#a1a1aa', // tailwind zinc-400
       ...layout?.font,
     },

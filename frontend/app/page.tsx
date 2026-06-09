@@ -12,6 +12,7 @@ interface Widget {
   chartJson: any;
   code: string;
   prompt: string;
+  insights?: string;
   x: number;
   y: number;
   w: number;
@@ -26,6 +27,14 @@ export default function Dashboard() {
   const [widgets, setWidgets] = useState<Widget[]>([]);
   const [layouts, setLayouts] = useState<any>({ lg: [] });
   
+  // Track active tab view for each widget card ('chart' | 'insights' | 'code')
+  const [widgetTabs, setWidgetTabs] = useState<Record<string, 'chart' | 'insights' | 'code'>>({});
+
+  const getWidgetTab = (id: string) => widgetTabs[id] || 'chart';
+  const setWidgetTab = (id: string, tab: 'chart' | 'insights' | 'code') => {
+    setWidgetTabs(prev => ({ ...prev, [id]: tab }));
+  };
+
   // Responsive container width hooks from react-grid-layout v2+
   const { width, containerRef, mounted } = useContainerWidth();
 
@@ -68,8 +77,20 @@ export default function Dashboard() {
       };
 
       if (useMultipleTables) {
-        payload.tables = tablesInput;
-        payload.relationships = relationshipsInput;
+        payload.tables = tablesInput.map(t => ({ name: t.name, path: t.path }));
+        // Convert array relationship back to API dict schema if needed, or map directly
+        if (relationshipsInput.length > 0) {
+          const apiRel: Record<string, string[]> = {};
+          relationshipsInput.forEach(r => {
+            if (r.from_table && r.from_col) {
+              apiRel[r.from_table] = [r.from_col];
+            }
+            if (r.to_table && r.to_col) {
+              apiRel[r.to_table] = [r.to_col];
+            }
+          });
+          payload.relationships = apiRel;
+        }
       } else {
         payload.file_path = filePath;
       }
@@ -97,6 +118,7 @@ export default function Dashboard() {
         chartJson: data.chart_json,
         code: data.code,
         prompt: prompt,
+        insights: data.insights,
         x: 0,
         y: widgets.length * 4,
         w: 6,
@@ -217,7 +239,7 @@ export default function Dashboard() {
               <span className="h-2 w-2 rounded-full bg-purple-500"></span> Relational Data Modeling (Power BI style)
             </h2>
             <p className="text-xs text-zinc-500 mb-4">
-              Configure multiple source datasets and define their join relationships. The LLM will perform SQL-like pd.merge calls.
+              Configure multiple source datasets and define their join relationships. Columns with identical names will be auto-joined if left blank.
             </p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -268,9 +290,9 @@ export default function Dashboard() {
 
               {/* Relationships configuration */}
               <div className="space-y-2">
-                <span className="text-xs font-semibold text-zinc-400">2. Relationships (Foreign Keys)</span>
+                <span className="text-xs font-semibold text-zinc-400">2. Relationships (Foreign Keys) - Optional</span>
                 {relationshipsInput.length === 0 ? (
-                  <p className="text-xs text-zinc-650 italic">No relationships defined. Columns with identical names will be auto-joined if necessary.</p>
+                  <p className="text-xs text-zinc-600 italic">No relationships defined. Heuristics will automatically auto-join tables (e.g. matching store_id or product_id to id).</p>
                 ) : (
                   relationshipsInput.map((r, idx) => (
                     <div key={idx} className="flex gap-1.5 items-center text-xs">
@@ -387,7 +409,7 @@ export default function Dashboard() {
                   className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-md overflow-hidden hover:border-zinc-700/80 transition-all select-none shadow-md group"
                 >
                   {/* Widget Header */}
-                  <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/80 px-4 py-2 cursor-default">
+                  <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/85 px-4 py-2 cursor-default">
                     <div className="flex items-center space-x-2 flex-1 min-w-0">
                       <div className="widget-drag-handle cursor-grab active:cursor-grabbing text-zinc-500 hover:text-zinc-300 px-1 -ml-1">
                         ⋮⋮
@@ -407,8 +429,55 @@ export default function Dashboard() {
                   </div>
 
                   {/* Widget Body */}
-                  <div className="flex-1 w-full h-full relative p-2 overflow-hidden bg-zinc-950/20">
-                    <ChartWidget chartJson={w.chartJson} />
+                  <div className="flex-1 w-full relative overflow-hidden bg-zinc-950/20 flex flex-col justify-between">
+                    <div className="flex-1 w-full relative overflow-hidden">
+                      {getWidgetTab(w.id) === 'chart' && (
+                        <div className="w-full h-full p-2">
+                          <ChartWidget chartJson={w.chartJson} />
+                        </div>
+                      )}
+                      
+                      {getWidgetTab(w.id) === 'insights' && (
+                        <div className="w-full h-full p-4 overflow-y-auto text-xs text-zinc-300 leading-relaxed flex flex-col justify-start">
+                          <span className="font-bold text-zinc-400 block mb-2">💡 AI Analytical Insights:</span>
+                          <p>{w.insights || "No insights generated for this visualization."}</p>
+                        </div>
+                      )}
+                      
+                      {getWidgetTab(w.id) === 'code' && (
+                        <div className="w-full h-full p-3 overflow-y-auto font-mono text-[10px] text-zinc-400 bg-zinc-950/40 select-text">
+                          <span className="font-semibold text-zinc-500 block mb-2">Generated Python Plotly code:</span>
+                          <pre className="whitespace-pre-wrap">{w.code}</pre>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Widget Footer Tab Bar */}
+                    <div className="flex border-t border-zinc-800/80 bg-zinc-900/50 text-[10px] font-medium text-zinc-500 select-none">
+                      <button 
+                        type="button"
+                        onClick={() => setWidgetTab(w.id, 'chart')} 
+                        className={`flex-1 py-2 text-center transition-colors ${getWidgetTab(w.id) === 'chart' ? 'text-purple-400 border-t border-purple-500 bg-zinc-950/25 font-semibold' : 'hover:text-zinc-350 hover:bg-zinc-800/20'}`}
+                      >
+                        📊 Chart
+                      </button>
+                      {w.insights && (
+                        <button 
+                          type="button"
+                          onClick={() => setWidgetTab(w.id, 'insights')} 
+                          className={`flex-1 py-2 text-center transition-colors ${getWidgetTab(w.id) === 'insights' ? 'text-indigo-400 border-t border-indigo-500 bg-zinc-950/25 font-semibold' : 'hover:text-zinc-350 hover:bg-zinc-800/20'}`}
+                        >
+                          💡 Insights
+                        </button>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={() => setWidgetTab(w.id, 'code')} 
+                        className={`flex-1 py-2 text-center transition-colors ${getWidgetTab(w.id) === 'code' ? 'text-blue-400 border-t border-blue-500 bg-zinc-950/25 font-semibold' : 'hover:text-zinc-350 hover:bg-zinc-800/20'}`}
+                      >
+                        💻 Code
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

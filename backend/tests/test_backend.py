@@ -48,6 +48,24 @@ class TestBackendComponents(unittest.TestCase):
         self.assertIn("Table Relationships", summary)
         self.assertIn("Table `Sales` joins using columns: `['product_id']`", summary)
 
+    def test_auto_detect_relationships(self):
+        sales_df = pd.DataFrame({
+            "product_id": [1, 2],
+            "sales_amount": [100.0, 200.0]
+        })
+        products_df = pd.DataFrame({
+            "id": [1, 2],
+            "product_name": ["A", "B"]
+        })
+        
+        # When relationships are empty/None, they should be auto-detected
+        dm = DataModel(tables={"Sales": sales_df, "Products": products_df}, relationships=None)
+        
+        self.assertIn("Sales", dm.relationships)
+        self.assertIn("Products", dm.relationships)
+        self.assertEqual(dm.relationships["Sales"], ["product_id"])
+        self.assertEqual(dm.relationships["Products"], ["id"])
+
     def test_execute_chart_code_success(self):
         code = """
 import plotly.express as px
@@ -109,7 +127,11 @@ import plotly.express as px
 fig = px.bar(df, x='Category', y='Sales')
 ```
 """
-        mock_llm_instance.invoke.return_value = mock_response
+        mock_response_insights = MagicMock()
+        mock_response_insights.content = "Plotted bar chart showing Sales distribution by Category."
+        
+        # side_effect provides response for code gen followed by insights gen
+        mock_llm_instance.invoke.side_effect = [mock_response, mock_response_insights]
 
         # Use FastAPI TestClient
         client = TestClient(app)
@@ -152,8 +174,11 @@ import plotly.express as px
 fig = px.bar(df, x='Category', y='Sales')
 ```
 """
-        # Return bad response first, then good response
-        mock_llm_instance.invoke.side_effect = [mock_response_1, mock_response_2]
+        mock_response_insights = MagicMock()
+        mock_response_insights.content = "Corrected visualization of Category vs Sales."
+        
+        # Return bad response first, then good response, then insights
+        mock_llm_instance.invoke.side_effect = [mock_response_1, mock_response_2, mock_response_insights]
 
         client = TestClient(app)
         

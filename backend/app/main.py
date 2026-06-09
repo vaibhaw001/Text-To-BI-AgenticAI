@@ -61,7 +61,7 @@ async def generate_chart(request: ChartRequest):
         logger.debug(f"Generated schema summary:\n{schema_summary}")
         
         # 3. Call agent with self-correction loop
-        fig, history, final_code = generate_chart_with_retry(
+        fig, history, final_code, insights = generate_chart_with_retry(
             prompt=request.prompt,
             schema_summary=schema_summary,
             data_model=data_model
@@ -75,6 +75,7 @@ async def generate_chart(request: ChartRequest):
             success=True,
             chart_json=chart_dict,
             code=final_code,
+            insights=insights,
             history=history
         )
         

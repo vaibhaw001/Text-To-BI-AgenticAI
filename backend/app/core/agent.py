@@ -55,18 +55,80 @@ Execution Environment Rules:
 - Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime.
 """
 
+def extract_chart_data_summary(fig: Any) -> str:
+    """Extracts a concise, text-based summary of the data coordinates plotted inside the Figure."""
+    summary_lines = []
+    
+    if not hasattr(fig, 'data') or not fig.data:
+        return "No plotted data found in figure."
+        
+    for i, trace in enumerate(fig.data):
+        trace_type = getattr(trace, 'type', 'unknown')
+        trace_name = getattr(trace, 'name', f"trace_{i}")
+        summary_lines.append(f"Trace {i} ('{trace_name}'): type={trace_type}")
+        
+        # Extract X and Y (common for bar, line, scatter)
+        x_vals = getattr(trace, 'x', None)
+        y_vals = getattr(trace, 'y', None)
+        if x_vals is not None and y_vals is not None:
+            try:
+                x_list = list(x_vals)
+                y_list = list(y_vals)
+                summary_lines.append(f"  Plotted X-values: {x_list[:10]}")
+                summary_lines.append(f"  Plotted Y-values: {y_list[:10]}")
+            except Exception:
+                pass
+                
+        # Extract labels and values (common for pie charts)
+        labels = getattr(trace, 'labels', None)
+        values = getattr(trace, 'values', None)
+        if labels is not None and values is not None:
+            try:
+                l_list = list(labels)
+                v_list = list(values)
+                summary_lines.append(f"  Plotted Labels: {l_list[:10]}")
+                summary_lines.append(f"  Plotted Values: {v_list[:10]}")
+            except Exception:
+                pass
+                
+    return "\n".join(summary_lines)
+
+def generate_data_insights(prompt: str, chart_data_summary: str, llm: Any) -> str:
+    """Generates a concise 2-3 sentence analytical summary of the chart findings using the LLM."""
+    insights_prompt = f"""You are an expert business intelligence analyst.
+Analyze the following chart data summary and write a concise, high-level analytical insight (2-3 sentences max) that explains the core findings or key trends shown in this visualization.
+
+User query context:
+"{prompt}"
+
+Plotted Chart Data Summary:
+{chart_data_summary}
+
+Provide ONLY the descriptive text insight. Do not include introductory phrases like "Here is the summary" or markdown formatting. Keep it highly professional, factual, and numeric."""
+    
+    try:
+        messages = [
+            SystemMessage(content="You are a senior BI analyst who provides concise, accurate data insights."),
+            HumanMessage(content=insights_prompt)
+        ]
+        response = llm.invoke(messages)
+        return extract_python_code(response.content)
+    except Exception as e:
+        return f"Unable to generate AI data insights: {str(e)}"
+
 def generate_chart_with_retry(
     prompt: str,
     schema_summary: str,
     data_model: DataModel,
     max_retries: int = 3
-) -> Tuple[Any, List[Dict[str, Any]], str]:
+) -> Tuple[Any, List[Dict[str, Any]], str, str]:
     """
     Generates a chart using LLM-generated Plotly code, running it inside the executor sandbox.
     Implements a self-correction loop if execution fails.
+    Also calls the LLM to generate descriptive insights based on the aggregated chart values.
     
     Returns:
-        Tuple[go.Figure, List[dict], str]: The final Plotly Figure, history of attempts, and the final corrected code.
+        Tuple[go.Figure, List[dict], str, str]: The Plotly Figure, execution history, final code, and AI insights.
     """
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
     model_name = os.getenv("LLM_MODEL", "gpt-4o")
@@ -142,8 +204,12 @@ Generate the Python Plotly code to answer this query. Merge tables if columns sp
             # Execute the generated code passing the data_model's tables dict
             fig, executed_code = execute_chart_code(code, data_model.tables)
             
+            # 3. Generate Analytical Insights from the plotted data
+            chart_data_summary = extract_chart_data_summary(fig)
+            insights = generate_data_insights(prompt, chart_data_summary, llm)
+            
             history[-1]["status"] = "success"
-            return fig, history, executed_code
+            return fig, history, executed_code, insights
             
         except Exception as e:
             tb = traceback.format_exc()
