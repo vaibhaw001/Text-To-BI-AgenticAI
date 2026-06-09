@@ -8,7 +8,12 @@ This application allows users to query single or multiple datasets using plain E
 
 ## 🚀 Key Features
 
-### 1. Natural Language Data Insights (AI Summaries)
+### 1. Interactive Filters (Power BI Slicers & Tableau Cross-Filtering)
+- **Tableau-Style Cross-Filtering**: Click on any segment, bar, or point in *any* chart on the dashboard. The application captures the click, extracts the column name/value, and automatically slices all other charts on the dashboard to match.
+- **Power BI-Style Slicer Panel**: Active filters are listed in an interactive header banner. Users can review active filters and clear them one-by-one or reset all filters.
+- **Backend-Driven Query Slicing**: To prevent raw data transfer, the frontend sends the active filter dict to the backend. The backend slices the dataframes using Pandas (`df = df[df[col] == val]`) *before* executing Plotly generation. This dynamically recalculates averages, counts, and sums correctly.
+
+### 2. Natural Language Data Insights (AI Summaries)
 - **Data Trace Extraction**: The backend extracts the plotted coordinates (aggregated X/Y coordinates or pie slices) directly from the Plotly figure traces (not the raw database, keeping transaction data secure).
 - **Secondary LLM Summarization**: Passes the plotted data to the LLM to generate a concise 2-3 sentence analytical summary.
 - **Inspectable BI Cards**: The frontend dashboard widgets feature a tab bar at the bottom allowing users to toggle between:
@@ -16,17 +21,17 @@ This application allows users to query single or multiple datasets using plain E
   - **💡 Insights**: The AI-generated descriptive summary of findings.
   - **💻 Code**: The raw Python code that generated the chart.
 
-### 2. Auto-Relationship Detection (Power BI Style)
-- **Zero-Config Joins**: If relationships are left blank, the engine automatically resolves how tables connect using two heuristics:
-  - **Exact Key Matching**: Columns with matching names (e.g. `store_id`, `product_id`) across tables are mapped (ignoring generic column names like `date`, `name`, `id`).
+### 3. Auto-Relationship Detection (Power BI Style)
+- **Heuristics Join Engine**: If relationships are left blank, the engine automatically resolves how tables connect:
+  - **Exact Key Matching**: Columns with matching names (e.g. `store_id`, `product_id`) across tables are mapped.
   - **Singular ID Substring Matching**: Automatically maps primary keys to foreign keys (e.g. mapping `Products.id` to `Sales.product_id` or `productid`).
 - The LLM receives this schema and automatically writes `pd.merge()` code to perform joins.
 
-### 3. Safe Execution Sandbox
+### 4. Safe Execution Sandbox
 - Generated Python code is executed locally in a restricted sandbox context, limiting available builtins, pre-injecting data tables as variables, and strictly restricting imports (allowing only `pandas`, `plotly`, `numpy`, `datetime`, `json`, `math`).
 
-### 4. Self-Correction Loop
-- If execution fails (e.g., ValueError, KeyError), the backend catches the traceback error and feeds it back to the agent. It attempts self-correction up to 3 times before returning a failure.
+### 5. Self-Correction Loop
+- If execution fails, the backend catches the traceback error and feeds it back to the agent. It attempts self-correction up to 3 times before returning a failure.
 
 ---
 
