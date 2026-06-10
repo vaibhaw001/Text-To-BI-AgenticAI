@@ -8,30 +8,35 @@ This application allows users to query single or multiple datasets using plain E
 
 ## 🚀 Key Features
 
-### 1. Interactive Filters (Power BI Slicers & Tableau Cross-Filtering)
-- **Tableau-Style Cross-Filtering**: Click on any segment, bar, or point in *any* chart on the dashboard. The application captures the click, extracts the column name/value, and automatically slices all other charts on the dashboard to match.
-- **Power BI-Style Slicer Panel**: Active filters are listed in an interactive header banner. Users can review active filters and clear them one-by-one or reset all filters.
-- **Backend-Driven Query Slicing**: To prevent raw data transfer, the frontend sends the active filter dict to the backend. The backend slices the dataframes using Pandas (`df = df[df[col] == val]`) *before* executing Plotly generation. This dynamically recalculates averages, counts, and sums correctly.
+### 1. Relational Data Modeling & Multi-Source Engine (Power BI Style)
+- **Hybrid Data Sources**: Connect to local `.csv` / `.xlsx` files or query live SQL databases (SQLite, PostgreSQL) directly using SQLAlchemy connection strings.
+- **Heuristics Auto-Relationship Detection**: If join keys are omitted, the backend heuristically maps tables using exact key matching (e.g., `store_id`) and key-substring matching (e.g., mapping `Products.id` to `Sales.product_id`).
+- **Custom Calculated Metrics Catalog**: Define calculated columns in the data model (e.g., `Margin = (Sales - Cost) / Sales`) which are pre-evaluated using Pandas `.eval()` and registered for the LLM to easily query.
+- **Time Intelligence Sandbox Helpers**: Pre-injected sandbox functions (`calculate_ytd`, `calculate_rolling_average`, `calculate_yoy_growth`) allow the LLM to generate accurate chronological aggregates easily.
 
-### 2. Natural Language Data Insights (AI Summaries)
-- **Data Trace Extraction**: The backend extracts the plotted coordinates (aggregated X/Y coordinates or pie slices) directly from the Plotly figure traces (not the raw database, keeping transaction data secure).
-- **Secondary LLM Summarization**: Passes the plotted data to the LLM to generate a concise 2-3 sentence analytical summary.
-- **Inspectable BI Cards**: The frontend dashboard widgets feature a tab bar at the bottom allowing users to toggle between:
-  - **📊 Chart**: The interactive React-Plotly visualization.
-  - **💡 Insights**: The AI-generated descriptive summary of findings.
-  - **💻 Code**: The raw Python code that generated the chart.
+### 2. Interactive Slicers & Tableau Cross-Filtering
+- **Cross-Filtering**: Clicking a point or bar in any chart captures the clicked value and automatically slices all other charts on the dashboard to match.
+- **Active Slicer Panel**: A dedicated active filters panel at the top shows all active filters, letting users reset them individually or clear all filters.
+- **Pandas Slicing Pre-Execution**: Filters are applied directly in Pandas on the backend *before* chart generation, ensuring accurate secondary aggregates (averages, counts, sums).
 
-### 3. Auto-Relationship Detection (Power BI Style)
-- **Heuristics Join Engine**: If relationships are left blank, the engine automatically resolves how tables connect:
-  - **Exact Key Matching**: Columns with matching names (e.g. `store_id`, `product_id`) across tables are mapped.
-  - **Singular ID Substring Matching**: Automatically maps primary keys to foreign keys (e.g. mapping `Products.id` to `Sales.product_id` or `productid`).
-- The LLM receives this schema and automatically writes `pd.merge()` code to perform joins.
+### 3. Inspectable BI Cards & AI Data Insights
+- **Data Trace Insights Extraction**: Analytical coordinate data is extracted from active Plotly traces and summarized by a secondary Gemini LLM agent into a concise 2-3 sentence summary.
+- **Multi-Tab Widget Switcher**: Toggle between:
+  - **📊 Chart**: Interactive, responsive React-Plotly visualization.
+  - **💡 Insights**: AI descriptive summary of trace findings.
+  - **💻 Code**: The raw Python code executed in the sandbox.
 
-### 4. Safe Execution Sandbox
-- Generated Python code is executed locally in a restricted sandbox context, limiting available builtins, pre-injecting data tables as variables, and strictly restricting imports (allowing only `pandas`, `plotly`, `numpy`, `datetime`, `json`, `math`).
+### 4. Customizer Panel, Downloads, & PDF Export
+- **Visual Style Customizer**: Tweak active charts directly from the dashboard: swap chart type (bar, line, scatter, pie), change color schemes (Indigo, Emerald, Amber, Rose, Violet), and show/hide gridlines.
+- **Multi-Format Active Downloads**: Click the download button on any widget to export the active tab:
+  - Chart Tab -> Standalone interactive HTML page (Plotly embed).
+  - Insights Tab -> Analytical report text file.
+  - Code Tab -> Sandboxed executable Python script.
+- **Export PDF**: Click the header print button to launch the system print dialog and export the entire dashboard layout as a clean, stacked PDF, automatically styled for export.
 
-### 5. Self-Correction Loop
-- If execution fails, the backend catches the traceback error and feeds it back to the agent. It attempts self-correction up to 3 times before returning a failure.
+### 5. Safe Sandbox & Self-Correction Loop
+- **Execution Sandbox**: Generated Python code runs locally inside a restricted execution sandbox, limiting builtins and allowing only essential data libraries (`pandas`, `numpy`, `plotly`, `datetime`, `json`, `math`).
+- **Traceback Self-Correction**: When syntax or execution errors are raised, the error is fed back to the LLM for self-correction (retries up to 3 times).
 
 ---
 
@@ -75,14 +80,17 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) in your browser to view the dashboard.
 
 ---
+## 🔗 Relational Data Modeling & Custom Metrics
 
-## 🔗 Relational Data Modeling (Power BI Style)
+The application supports advanced multi-table models, live database loading, and custom metrics:
 
-The application supports multi-table schemas:
-1. Click the **Model** toggle in the search bar.
-2. Configure multiple dataset tables (e.g. `Sales` at `F:/path/to/sales.csv`, `Products` at `F:/path/to/products.csv`).
-3. Define the joining key relationships (or leave them blank to use automatic relationship heuristics).
-4. Enter your query (e.g. *"Show sales by product category as a bar chart"*). 
+1. **Toggle Model View**: Click the **Model** toggle in the navbar to open advanced configuration.
+2. **Configure Data Tables**: 
+   - Add multiple tables.
+   - Choose **File** source to upload local CSV/Excel files, or **Database** source to connect to SQLite or PostgreSQL engines using SQLAlchemy connection URIs. Verify connections instantly using the **Test Connection** button.
+3. **Set Join Relationships**: Define explicit foreign key relationships (e.g., `Sales.product_id` to `Products.id`), or leave blank to let the heuristic engine resolve columns automatically.
+4. **Define Custom Calculated Columns**: Add custom formulas to the Metrics Catalog (e.g. `ProfitMargin` with formula `(Sales - Cost) / Sales` on table `df`).
+5. **Ask Plain English Queries**: Enter your prompt (e.g. *"Show ProfitMargin by category"* or *"Plot rolling average sales over time"*).
 
 ---
 

@@ -466,6 +466,100 @@ export default function Dashboard() {
     });
   };
 
+  const handleDownloadWidget = (w: Widget) => {
+    const activeTab = getWidgetTab(w.id);
+    const safeTitle = w.title.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    if (activeTab === 'chart') {
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${w.title}</title>
+  <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+  <style>
+    body {
+      background-color: #09090b;
+      color: #fafafa;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    #chart-container {
+      width: 90%;
+      max-width: 1000px;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    h2 {
+      margin-top: 0;
+      margin-bottom: 15px;
+      font-size: 1.25rem;
+      font-weight: 600;
+      border-bottom: 1px solid #27272a;
+      padding-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="chart-container">
+    <h2>${w.title}</h2>
+    <div id="plotly-chart" style="width: 100%; height: 500px;"></div>
+  </div>
+  <script>
+    const data = ${JSON.stringify(w.chartJson?.data || [])};
+    const layout = ${JSON.stringify(w.chartJson?.layout || {})};
+    if (layout) {
+      layout.paper_bgcolor = 'rgba(0,0,0,0)';
+      layout.plot_bgcolor = 'rgba(0,0,0,0)';
+      if (layout.font) layout.font.color = '#e4e4e7';
+      layout.margin = { t: 40, r: 40, b: 40, l: 60 };
+    }
+    Plotly.newPlot('plotly-chart', data, layout, { responsive: true });
+  </script>
+</body>
+</html>`;
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeTitle}_chart.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else if (activeTab === 'insights') {
+      const textContent = `AI Analytical Insights for: ${w.title}\nQuery Prompt: ${w.prompt}\n\n${w.insights || ''}`;
+      const blob = new Blob([textContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeTitle}_insights.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else if (activeTab === 'code') {
+      const blob = new Blob([w.code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeTitle}_code.py`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
   // Tableau Cross-Filtering: Capture clicks on Plotly points and apply as a dashboard filter
   const handleChartClick = (point: any) => {
     console.log("Chart clicked:", point);
@@ -601,6 +695,17 @@ export default function Dashboard() {
                 'Generate Chart'
               )}
             </button>
+
+            {widgets.length > 0 && (
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 font-medium text-sm transition-all active:scale-95 flex items-center justify-center gap-2 no-print"
+                title="Save Entire Dashboard as PDF"
+              >
+                🖨️ Export PDF
+              </button>
+            )}
           </form>
         </div>
       </header>
@@ -1019,7 +1124,7 @@ export default function Dashboard() {
                       </h3>
                     </div>
                     
-                    <div className="flex items-center space-x-1">
+                    <div className="flex items-center space-x-1 no-print">
                       <button
                         type="button"
                         onClick={() => setCustomizingWidgetId(customizingWidgetId === w.id ? null : w.id)}
@@ -1027,6 +1132,14 @@ export default function Dashboard() {
                         title="Customize Widget Style"
                       >
                         ⚙️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadWidget(w)}
+                        className="text-zinc-500 hover:text-blue-400 transition-colors p-1"
+                        title={`Download ${getWidgetTab(w.id) === 'chart' ? 'Interactive Chart (HTML)' : getWidgetTab(w.id) === 'insights' ? 'AI Insights (TXT)' : 'Python Code (PY)'}`}
+                      >
+                        📥
                       </button>
                       <button
                         type="button"
