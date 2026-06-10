@@ -26,7 +26,8 @@ This application allows users to query single or multiple datasets using plain E
   - **💡 Insights**: AI descriptive summary of trace findings.
   - **💻 Code**: The raw Python code executed in the sandbox.
 
-### 4. Customizer Panel, Downloads, & PDF Export
+### 4. Multi-Page Reports, Customizer, Downloads, & PDF Export
+- **Multi-Page Reports (Report Tabs)**: Organize your workspace across multiple pages/tabs (e.g. "Sales Overview" and "Product Deep-Dive"). Pages support inline renaming (double-click to edit) and deletion. Widgets are completely scoped to the page they were generated in.
 - **Visual Style Customizer**: Tweak active charts directly from the dashboard: swap chart type (bar, line, scatter, pie), change color schemes (Indigo, Emerald, Amber, Rose, Violet), and show/hide gridlines.
 - **Multi-Format Active Downloads**: Click the download button on any widget to export the active tab:
   - Chart Tab -> Standalone interactive HTML page (Plotly embed).
@@ -91,6 +92,7 @@ The application supports advanced multi-table models, live database loading, and
 3. **Set Join Relationships**: Define explicit foreign key relationships (e.g., `Sales.product_id` to `Products.id`), or leave blank to let the heuristic engine resolve columns automatically.
 4. **Define Custom Calculated Columns**: Add custom formulas to the Metrics Catalog (e.g. `ProfitMargin` with formula `(Sales - Cost) / Sales` on table `df`).
 5. **Ask Plain English Queries**: Enter your prompt (e.g. *"Show ProfitMargin by category"* or *"Plot rolling average sales over time"*).
+6. **Multi-Page Dashboard Scoping**: Add pages using the `➕ Add Page` button in the report pages bar above the canvas. Rename pages by double-clicking the page name or clicking the pencil ✏️ icon. Widgets and dashboard layouts are scoped to the active page, enabling multi-tab dashboard storytelling.
 
 ---
 
