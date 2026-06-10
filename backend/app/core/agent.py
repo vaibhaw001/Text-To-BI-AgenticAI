@@ -53,6 +53,11 @@ Execution Environment Rules:
 - Return ONLY the raw python code inside a ```python ``` markdown block. No explanations, no markdown comments outside the code block, no print statements.
 - Do NOT use fig.show() or fig.write_html().
 - Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime.
+
+Time Intelligence Helpers (Already imported in execution environment, use directly if needed):
+- `calculate_ytd(df, date_col, val_col)`: Returns a Pandas Series of chronological YTD cumulative sum values resetting at start of each calendar year.
+- `calculate_rolling_average(df, date_col, val_col, window=7)`: Returns a Pandas Series of chronological rolling average values.
+- `calculate_yoy_growth(df, date_col, val_col)`: Returns a DataFrame with columns: `[date_col, f'total_{val_col}', 'yoy_growth_percent']` containing monthly year-over-year growth percentage.
 """
 
 def extract_chart_data_summary(fig: Any) -> str:

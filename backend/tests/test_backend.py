@@ -253,5 +253,57 @@ fig = px.bar(df, x='Category', y='Sales')
         if os.path.exists(data["file_path"]):
             os.remove(data["file_path"])
 
+    def test_db_loading_and_test_db_api(self):
+        client = TestClient(app)
+        db_config = {
+            "db_type": "sqlite",
+            "connection_string": "sqlite:///:memory:",
+            "query": "SELECT 1 as id, 'Apple' as product"
+        }
+        response = client.post("/api/test-db", json=db_config)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["columns"], ["id", "product"])
+        self.assertEqual(data["sample_rows"], [{"id": 1, "product": "Apple"}])
+
+    def test_metrics_calculation(self):
+        client = TestClient(app)
+        with patch('app.main.generate_chart_with_retry') as mock_agent:
+            mock_agent.return_value = (go.Figure(), [], "fig = go.Figure()", "Mock Insights")
+            response = client.post(
+                "/api/generate-chart",
+                json={
+                    "prompt": "Show sales margin",
+                    "file_path": self.csv_path,
+                    "metrics": [
+                        {"name": "SalesPerQty", "expression": "Sales / Quantity", "table": "df"}
+                    ]
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data["success"])
+            
+            schema_summary_arg = mock_agent.call_args[1]["schema_summary"]
+            self.assertIn("contains custom column `SalesPerQty` calculated as", schema_summary_arg)
+
+    def test_time_intelligence_helpers(self):
+        from app.sandbox.executor import calculate_ytd, calculate_rolling_average, calculate_yoy_growth
+        
+        df = pd.DataFrame({
+            "Date": ["2026-01-01", "2026-01-02", "2026-02-01", "2027-01-01"],
+            "Sales": [100.0, 150.0, 200.0, 300.0]
+        })
+        
+        ytd_vals = calculate_ytd(df, "Date", "Sales")
+        self.assertEqual(list(ytd_vals), [100.0, 250.0, 450.0, 300.0])
+        
+        rolling_vals = calculate_rolling_average(df, "Date", "Sales", window=2)
+        self.assertEqual(list(rolling_vals), [100.0, 125.0, 175.0, 250.0])
+        
+        yoy_df = calculate_yoy_growth(df, "Date", "Sales")
+        self.assertIn("yoy_growth_percent", yoy_df.columns)
+
 if __name__ == "__main__":
     unittest.main()

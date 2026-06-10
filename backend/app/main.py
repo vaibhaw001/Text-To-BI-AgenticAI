@@ -2,11 +2,13 @@ import os
 import json
 import logging
 import shutil
+import pandas as pd
+import sqlalchemy as sa
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.schema import ChartRequest, ChartResponse
+from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig
 from app.core.data import read_dataset, DataModel
 from app.core.agent import generate_chart_with_retry
 
@@ -62,6 +64,58 @@ async def upload_file(file: UploadFile = File(...)):
         logger.error(f"Error during file upload: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
+def read_db_table(config: DbConnectionConfig) -> pd.DataFrame:
+    try:
+        engine = sa.create_engine(config.connection_string)
+        with engine.connect() as conn:
+            if config.query:
+                logger.info(f"Loading data via query from connection string: {config.connection_string}")
+                return pd.read_sql_query(sa.text(config.query), conn)
+            elif config.table_name:
+                logger.info(f"Loading table '{config.table_name}' from connection string: {config.connection_string}")
+                return pd.read_sql_query(sa.text(f"SELECT * FROM {config.table_name}"), conn)
+            else:
+                raise ValueError("Either 'table_name' or 'query' must be specified in the database connection configuration.")
+    except Exception as e:
+        logger.error(f"Failed to read database table: {str(e)}", exc_info=True)
+        raise ValueError(f"Database error: {str(e)}")
+
+@app.post("/api/test-db")
+async def test_db_connection(config: DbConnectionConfig):
+    logger.info(f"Testing DB connection for {config.connection_string}")
+    try:
+        engine = sa.create_engine(config.connection_string)
+        with engine.connect() as conn:
+            if config.query:
+                df = pd.read_sql_query(sa.text(f"SELECT * FROM ({config.query}) as subq LIMIT 5"), conn)
+            elif config.table_name:
+                df = pd.read_sql_query(sa.text(f"SELECT * FROM {config.table_name} LIMIT 5"), conn)
+            else:
+                conn.execute(sa.text("SELECT 1"))
+                return {"success": True, "columns": [], "sample_rows": [], "message": "Connection successful!"}
+                
+            cols = list(df.columns)
+            rows = df.head(3).to_dict(orient="records")
+            # Convert non-serializable objects (like datetime) to string representation
+            import datetime
+            for r in rows:
+                for k, v in r.items():
+                    if isinstance(v, (datetime.date, datetime.datetime)):
+                        r[k] = str(v)
+            
+            return {
+                "success": True,
+                "columns": cols,
+                "sample_rows": rows,
+                "message": f"Successfully connected! Found columns: {', '.join(cols)}"
+            }
+    except Exception as e:
+        logger.error(f"DB Connection test failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.post("/api/generate-chart", response_model=ChartResponse)
 async def generate_chart(request: ChartRequest):
     logger.info(f"Received chart request. Prompt: {request.prompt}")
@@ -72,7 +126,12 @@ async def generate_chart(request: ChartRequest):
             logger.info(f"Initializing relational model with {len(request.tables)} tables.")
             loaded_tables = {}
             for t_config in request.tables:
-                loaded_tables[t_config.name] = read_dataset(t_config.path)
+                if t_config.db_connection:
+                    loaded_tables[t_config.name] = read_db_table(t_config.db_connection)
+                elif t_config.path:
+                    loaded_tables[t_config.name] = read_dataset(t_config.path)
+                else:
+                    raise ValueError(f"Table '{t_config.name}' must have either 'path' or 'db_connection' configured.")
             
             data_model = DataModel(tables=loaded_tables, relationships=request.relationships)
             
@@ -83,6 +142,25 @@ async def generate_chart(request: ChartRequest):
             
         else:
             raise ValueError("Either 'file_path' or 'tables' must be provided in the request.")
+
+        # Evaluate custom calculated metrics on loaded DataFrames
+        if request.metrics:
+            logger.info(f"Evaluating custom metrics: {len(request.metrics)}")
+            for metric in request.metrics:
+                tbl_name = metric.table
+                if len(data_model.tables) == 1:
+                    tbl_name = list(data_model.tables.keys())[0]
+                
+                if tbl_name in data_model.tables:
+                    df = data_model.tables[tbl_name]
+                    try:
+                        data_model.tables[tbl_name][metric.name] = df.eval(metric.expression)
+                        logger.info(f"Evaluated metric column '{metric.name}' successfully on table '{tbl_name}'")
+                    except Exception as e:
+                        logger.error(f"Failed to evaluate metric expression '{metric.expression}' on table '{tbl_name}': {str(e)}")
+                        raise ValueError(f"Failed to calculate metric '{metric.name}' on '{tbl_name}': {str(e)}")
+                else:
+                    raise ValueError(f"Target table '{tbl_name}' for metric '{metric.name}' was not found in the loaded data model.")
 
         # Apply filters to DataFrames if provided
         if request.filters:
@@ -97,6 +175,14 @@ async def generate_chart(request: ChartRequest):
 
         # 2. Extract schema summary
         schema_summary = data_model.get_schema_summary()
+        
+        # Append calculated metrics context to schema_summary for LLM visibility
+        if request.metrics:
+            schema_summary += "\n\n## Custom Calculated Metrics (Pre-calculated and available as columns):\n"
+            for metric in request.metrics:
+                target_name = list(data_model.tables.keys())[0] if len(data_model.tables) == 1 else metric.table
+                schema_summary += f"- Table `{target_name}` contains custom column `{metric.name}` calculated as: `{metric.expression}`\n"
+        
         logger.debug(f"Generated schema summary:\n{schema_summary}")
         
         # 3. Call agent with self-correction loop

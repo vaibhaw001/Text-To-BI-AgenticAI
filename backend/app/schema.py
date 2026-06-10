@@ -1,9 +1,21 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 
+class DbConnectionConfig(BaseModel):
+    db_type: str = Field(..., description="The type of database (e.g., 'sqlite' or 'postgresql')")
+    connection_string: str = Field(..., description="SQLAlchemy connection URL (e.g. sqlite:///data.db)")
+    table_name: Optional[str] = Field(None, description="The table name to load from the database")
+    query: Optional[str] = Field(None, description="Optional SQL query to load data instead of a full table")
+
 class TableConfig(BaseModel):
     name: str = Field(..., description="The variable name assigned to the table (e.g., 'Sales')")
-    path: str = Field(..., description="The absolute path to the dataset file (CSV or Excel)")
+    path: Optional[str] = Field(None, description="The absolute path to the dataset file (CSV or Excel)")
+    db_connection: Optional[DbConnectionConfig] = Field(None, description="Database connection details if loading from a DB")
+
+class MetricConfig(BaseModel):
+    name: str = Field(..., description="The name of the metric column")
+    expression: str = Field(..., description="Calculated metric expression (e.g., '(Revenue - Cost) / Revenue')")
+    table: str = Field(..., description="The target table name to append the metric column to")
 
 class ChartRequest(BaseModel):
     prompt: str = Field(..., description="The visualization and analysis instruction from the user")
@@ -16,6 +28,10 @@ class ChartRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = Field(
         None,
         description="Dictionary of filters to slice the dataset prior to code execution (e.g. {'Region': 'North'})"
+    )
+    metrics: Optional[List[MetricConfig]] = Field(
+        None,
+        description="Calculated metrics catalog definitions"
     )
 
 class ChartResponse(BaseModel):

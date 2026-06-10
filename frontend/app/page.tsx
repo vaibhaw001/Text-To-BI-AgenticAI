@@ -45,11 +45,38 @@ export default function Dashboard() {
 
   // Custom relationship builder states (Power BI style)
   const [useMultipleTables, setUseMultipleTables] = useState(false);
-  const [tablesInput, setTablesInput] = useState<{ name: string; path: string; fileName?: string }[]>([
-    { name: 'Sales', path: 'f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv', fileName: 'sample_sales.csv' }
+  const [tablesInput, setTablesInput] = useState<{
+    name: string;
+    path: string;
+    fileName?: string;
+    sourceType: 'file' | 'db';
+    dbType: 'sqlite' | 'postgresql';
+    dbConn: string;
+    dbTable?: string;
+    dbQuery?: string;
+    dbVerified?: boolean;
+    dbError?: string;
+  }[]>([
+    {
+      name: 'Sales',
+      path: 'f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv',
+      fileName: 'sample_sales.csv',
+      sourceType: 'file',
+      dbType: 'sqlite',
+      dbConn: 'sqlite:///backend/data/chinook.db',
+      dbTable: '',
+      dbQuery: '',
+      dbVerified: false
+    }
   ]);
   const [relationshipsInput, setRelationshipsInput] = useState<{ from_table: string; from_col: string; to_table: string; to_col: string }[]>([]);
   const [multiUploading, setMultiUploading] = useState<Record<number, boolean>>({});
+  
+  // Custom metrics catalog states
+  const [metricsInput, setMetricsInput] = useState<{ name: string; expression: string; table: string }[]>([]);
+  
+  // Widget customization states
+  const [customizingWidgetId, setCustomizingWidgetId] = useState<string | null>(null);
 
   const handleFileUpload = async (file: File) => {
     setUploading(true);
@@ -120,6 +147,106 @@ export default function Dashboard() {
     }
   };
 
+  const handleTestDbConnection = async (idx: number) => {
+    const table = tablesInput[idx];
+    if (!table.dbConn) {
+      const copy = [...tablesInput];
+      copy[idx].dbError = 'Connection string is required';
+      copy[idx].dbVerified = false;
+      setTablesInput(copy);
+      return;
+    }
+
+    const copy = [...tablesInput];
+    copy[idx].dbError = undefined;
+    copy[idx].dbVerified = false;
+    setTablesInput(copy);
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/test-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          db_type: table.dbType,
+          connection_string: table.dbConn,
+          table_name: table.dbTable || null,
+          query: table.dbQuery || null,
+        }),
+      });
+
+      const data = await res.json();
+      const updated = [...tablesInput];
+      if (res.ok && data.success) {
+        updated[idx].dbVerified = true;
+        updated[idx].dbError = undefined;
+        if (!updated[idx].name && table.dbTable) {
+          updated[idx].name = table.dbTable;
+        }
+      } else {
+        updated[idx].dbVerified = false;
+        updated[idx].dbError = data.error || 'Connection failed';
+      }
+      setTablesInput(updated);
+    } catch (err: any) {
+      console.error(err);
+      const updated = [...tablesInput];
+      updated[idx].dbVerified = false;
+      updated[idx].dbError = err.message || 'Network error connecting to DB';
+      setTablesInput(updated);
+    }
+  };
+
+  const customizeWidgetVisual = (
+    widgetId: string, 
+    customConfig: { chartType?: string; color?: string; showGrid?: boolean }
+  ) => {
+    setWidgets(prev => prev.map(w => {
+      if (w.id !== widgetId) return w;
+      
+      const chartJsonCopy = JSON.parse(JSON.stringify(w.chartJson));
+      
+      if (chartJsonCopy.data && chartJsonCopy.data.length > 0) {
+        chartJsonCopy.data.forEach((trace: any) => {
+          if (customConfig.chartType) {
+            if (customConfig.chartType === 'line') {
+              trace.type = 'scatter';
+              trace.mode = 'lines+markers';
+            } else if (customConfig.chartType === 'bar') {
+              trace.type = 'bar';
+              delete trace.mode;
+            } else if (customConfig.chartType === 'scatter') {
+              trace.type = 'scatter';
+              trace.mode = 'markers';
+            } else if (customConfig.chartType === 'pie') {
+              trace.type = 'pie';
+              if (trace.x && trace.y) {
+                trace.labels = trace.x;
+                trace.values = trace.y;
+              }
+            }
+          }
+          if (customConfig.color) {
+            if (trace.type === 'pie') {
+              trace.marker = { ...trace.marker, colors: [customConfig.color, '#6366f1', '#10b981', '#f59e0b', '#ec4899'] };
+            } else {
+              trace.marker = { ...trace.marker, color: customConfig.color };
+              trace.line = { ...trace.line, color: customConfig.color };
+            }
+          }
+        });
+      }
+
+      if (customConfig.showGrid !== undefined && chartJsonCopy.layout) {
+        if (!chartJsonCopy.layout.xaxis) chartJsonCopy.layout.xaxis = {};
+        if (!chartJsonCopy.layout.yaxis) chartJsonCopy.layout.yaxis = {};
+        chartJsonCopy.layout.xaxis.showgrid = customConfig.showGrid;
+        chartJsonCopy.layout.yaxis.showgrid = customConfig.showGrid;
+      }
+      
+      return { ...w, chartJson: chartJsonCopy };
+    }));
+  };
+
   // Trigger reloading of all active widgets whenever the global filter changes
   useEffect(() => {
     if (widgets.length > 0) {
@@ -138,7 +265,20 @@ export default function Dashboard() {
         };
 
         if (useMultipleTables) {
-          payload.tables = tablesInput.map(t => ({ name: t.name, path: t.path }));
+          payload.tables = tablesInput.map(t => {
+            const tConf: any = { name: t.name };
+            if (t.sourceType === 'db') {
+              tConf.db_connection = {
+                db_type: t.dbType,
+                connection_string: t.dbConn,
+                table_name: t.dbTable || null,
+                query: t.dbQuery || null
+              };
+            } else {
+              tConf.path = t.path;
+            }
+            return tConf;
+          });
           if (relationshipsInput.length > 0) {
             const apiRel: Record<string, string[]> = {};
             relationshipsInput.forEach(r => {
@@ -149,6 +289,14 @@ export default function Dashboard() {
           }
         } else {
           payload.file_path = filePath;
+        }
+
+        if (metricsInput.length > 0) {
+          payload.metrics = metricsInput.map(m => ({
+            name: m.name,
+            expression: m.expression,
+            table: m.table
+          }));
         }
 
         const response = await fetch('http://127.0.0.1:8000/api/generate-chart', {
@@ -214,7 +362,20 @@ export default function Dashboard() {
       };
 
       if (useMultipleTables) {
-        payload.tables = tablesInput.map(t => ({ name: t.name, path: t.path }));
+        payload.tables = tablesInput.map(t => {
+          const tConf: any = { name: t.name };
+          if (t.sourceType === 'db') {
+            tConf.db_connection = {
+              db_type: t.dbType,
+              connection_string: t.dbConn,
+              table_name: t.dbTable || null,
+              query: t.dbQuery || null
+            };
+          } else {
+            tConf.path = t.path;
+          }
+          return tConf;
+        });
         if (relationshipsInput.length > 0) {
           const apiRel: Record<string, string[]> = {};
           relationshipsInput.forEach(r => {
@@ -225,6 +386,14 @@ export default function Dashboard() {
         }
       } else {
         payload.file_path = filePath;
+      }
+
+      if (metricsInput.length > 0) {
+        payload.metrics = metricsInput.map(m => ({
+          name: m.name,
+          expression: m.expression,
+          table: m.table
+        }));
       }
 
       const response = await fetch('http://127.0.0.1:8000/api/generate-chart', {
@@ -485,70 +654,165 @@ export default function Dashboard() {
               Configure multiple source datasets and define their join relationships. Columns with identical names will be auto-joined if left blank.
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Tables configuration */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-zinc-400">1. Data Tables</span>
+              <div className="space-y-3">
+                <span className="text-xs font-semibold text-zinc-400">📁 1. Data Tables</span>
                 {tablesInput.map((t, idx) => (
-                  <div key={idx} className="flex gap-2 items-center">
-                    <input 
-                      type="text" 
-                      placeholder="Table Name (e.g. Sales)" 
-                      value={t.name}
-                      onChange={(e) => {
-                        const copy = [...tablesInput];
-                        copy[idx].name = e.target.value;
-                        setTablesInput(copy);
-                      }}
-                      className="w-1/3 px-2 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs text-white"
-                    />
-                    <div className="flex-1 relative">
-                      <input
-                        type="file"
-                        id={`multi-file-upload-${idx}`}
-                        className="hidden"
-                        accept=".csv,.xlsx,.xls"
-                        disabled={isLoading || multiUploading[idx]}
+                  <div key={idx} className="flex flex-col gap-2 p-3 rounded-lg border border-zinc-800 bg-zinc-950/40">
+                    <div className="flex gap-2 items-center">
+                      <input 
+                        type="text" 
+                        placeholder="Table Name" 
+                        value={t.name}
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleMultiTableFileUpload(idx, file);
+                          const copy = [...tablesInput];
+                          copy[idx].name = e.target.value;
+                          setTablesInput(copy);
                         }}
+                        className="w-1/2 px-2 py-1 rounded bg-zinc-900 border border-zinc-850 text-xs text-white"
                       />
-                      <label
-                        htmlFor={`multi-file-upload-${idx}`}
-                        className={`w-full flex items-center justify-between px-2 py-1 rounded border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer hover:bg-zinc-900 hover:border-zinc-700 transition-all ${multiUploading[idx] ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      
+                      <select
+                        value={t.sourceType}
+                        onChange={(e) => {
+                          const copy = [...tablesInput];
+                          copy[idx].sourceType = e.target.value as 'file' | 'db';
+                          setTablesInput(copy);
+                        }}
+                        className="px-2 py-1 rounded bg-zinc-900 border border-zinc-850 text-xs text-zinc-300"
                       >
-                        <span className="truncate max-w-[150px]">
-                          {multiUploading[idx] ? (
-                            <span className="flex items-center gap-1">
-                              <span className="h-3 w-3 animate-spin rounded-full border border-zinc-550 border-t-white"></span>
-                              Uploading...
-                            </span>
-                          ) : t.fileName ? (
-                            `📁 ${t.fileName}`
-                          ) : (
-                            '📁 Select File'
-                          )}
-                        </span>
-                        {!multiUploading[idx] && (
-                          <span className="text-[10px] text-purple-400 font-medium px-1 rounded bg-purple-950/20">
-                            Upload
-                          </span>
-                        )}
-                      </label>
+                        <option value="file">File</option>
+                        <option value="db">Database</option>
+                      </select>
+
+                      <button 
+                        type="button" 
+                        onClick={() => setTablesInput(tablesInput.filter((_, i) => i !== idx))}
+                        className="text-xs text-red-400 hover:text-red-300 ml-auto px-1"
+                      >
+                        Delete
+                      </button>
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={() => setTablesInput(tablesInput.filter((_, i) => i !== idx))}
-                      className="text-xs text-red-400 hover:text-red-300 px-1"
-                    >
-                      Delete
-                    </button>
+
+                    {t.sourceType === 'file' ? (
+                      <div className="relative w-full">
+                        <input
+                          type="file"
+                          id={`multi-file-upload-${idx}`}
+                          className="hidden"
+                          accept=".csv,.xlsx,.xls"
+                          disabled={isLoading || multiUploading[idx]}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleMultiTableFileUpload(idx, file);
+                          }}
+                        />
+                        <label
+                          htmlFor={`multi-file-upload-${idx}`}
+                          className={`w-full flex items-center justify-between px-2 py-1 rounded border border-zinc-800 bg-zinc-900 text-xs text-zinc-300 cursor-pointer hover:bg-zinc-850 hover:border-zinc-750 transition-all ${multiUploading[idx] ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        >
+                          <span className="truncate max-w-[170px]">
+                            {multiUploading[idx] ? (
+                              <span className="flex items-center gap-1">
+                                <span className="h-3 w-3 animate-spin rounded-full border border-zinc-550 border-t-white"></span>
+                                Uploading...
+                              </span>
+                            ) : t.fileName ? (
+                              `📁 ${t.fileName}`
+                            ) : (
+                              '📁 Select File'
+                            )}
+                          </span>
+                          {!multiUploading[idx] && (
+                            <span className="text-[10px] text-purple-400 font-medium px-1 rounded bg-purple-950/20">
+                              Upload
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1.5 border-t border-zinc-850 pt-2">
+                        <div className="flex gap-2">
+                          <select
+                            value={t.dbType}
+                            onChange={(e) => {
+                              const copy = [...tablesInput];
+                              copy[idx].dbType = e.target.value as 'sqlite' | 'postgresql';
+                              setTablesInput(copy);
+                            }}
+                            className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 w-1/3"
+                          >
+                            <option value="sqlite">SQLite</option>
+                            <option value="postgresql">Postgres</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="URI (e.g. sqlite:///Chinook.db)"
+                            value={t.dbConn}
+                            onChange={(e) => {
+                              const copy = [...tablesInput];
+                              copy[idx].dbConn = e.target.value;
+                              setTablesInput(copy);
+                            }}
+                            className="flex-1 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-white"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Table Name"
+                            value={t.dbTable || ''}
+                            onChange={(e) => {
+                              const copy = [...tablesInput];
+                              copy[idx].dbTable = e.target.value;
+                              setTablesInput(copy);
+                            }}
+                            className="w-1/2 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-white"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Or Query"
+                            value={t.dbQuery || ''}
+                            onChange={(e) => {
+                              const copy = [...tablesInput];
+                              copy[idx].dbQuery = e.target.value;
+                              setTablesInput(copy);
+                            }}
+                            className="flex-1 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-white"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleTestDbConnection(idx)}
+                            className="px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-500 text-white font-medium text-[10px] transition-all active:scale-95"
+                          >
+                            Test Connection
+                          </button>
+                          {t.dbVerified && (
+                            <span className="text-[10px] text-emerald-400 font-bold">✅ Verified</span>
+                          )}
+                          {t.dbError && (
+                            <span className="text-[9px] text-red-400 max-w-[120px] truncate" title={t.dbError}>
+                              ❌ Failed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <button
                   type="button"
-                  onClick={() => setTablesInput([...tablesInput, { name: '', path: '', fileName: '' }])}
+                  onClick={() => setTablesInput([...tablesInput, { 
+                    name: '', 
+                    path: '', 
+                    fileName: '', 
+                    sourceType: 'file',
+                    dbType: 'sqlite',
+                    dbConn: 'sqlite:///backend/data/chinook.db'
+                  }])}
                   className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 mt-1"
                 >
                   + Add Table
@@ -626,6 +890,75 @@ export default function Dashboard() {
                   + Define Relationship
                 </button>
               </div>
+
+              {/* Metrics Catalog configuration */}
+              <div className="space-y-3">
+                <span className="text-xs font-semibold text-zinc-400 flex items-center gap-1">
+                  📐 3. Metrics Catalog (Calculated Columns)
+                </span>
+                {metricsInput.length === 0 ? (
+                  <p className="text-xs text-zinc-600 italic">No calculated metrics defined. Add formulas like Margin = (Sales - Cost) / Sales.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {metricsInput.map((m, idx) => (
+                      <div key={idx} className="flex flex-col gap-1.5 p-2 rounded border border-zinc-800 bg-zinc-950/30">
+                        <div className="flex gap-1.5 items-center justify-between">
+                          <input
+                            type="text"
+                            placeholder="Name (e.g. Margin)"
+                            value={m.name}
+                            onChange={(e) => {
+                              const copy = [...metricsInput];
+                              copy[idx].name = e.target.value;
+                              setMetricsInput(copy);
+                            }}
+                            className="w-1/3 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-850 text-xs text-white font-semibold"
+                          />
+                          <select
+                            value={m.table}
+                            onChange={(e) => {
+                              const copy = [...metricsInput];
+                              copy[idx].table = e.target.value;
+                              setMetricsInput(copy);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-850 text-xs text-zinc-300"
+                          >
+                            <option value="df">df (Default)</option>
+                            {tablesInput.filter(t => t.name).map(t => (
+                              <option key={t.name} value={t.name}>{t.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setMetricsInput(metricsInput.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-300 text-xs px-1"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Formula: (Revenue - Cost) / Revenue"
+                          value={m.expression}
+                          onChange={(e) => {
+                            const copy = [...metricsInput];
+                            copy[idx].expression = e.target.value;
+                            setMetricsInput(copy);
+                          }}
+                          className="w-full px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-850 text-[11px] text-zinc-300 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setMetricsInput([...metricsInput, { name: '', expression: '', table: tablesInput[0]?.name || 'df' }])}
+                  className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 mt-1"
+                >
+                  + Add Calculated Metric
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -686,15 +1019,90 @@ export default function Dashboard() {
                       </h3>
                     </div>
                     
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteWidget(w.id)}
-                      className="text-zinc-500 hover:text-red-400 transition-colors p-1"
-                      title="Remove Widget"
-                    >
-                      ✕
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        type="button"
+                        onClick={() => setCustomizingWidgetId(customizingWidgetId === w.id ? null : w.id)}
+                        className={`text-zinc-500 hover:text-purple-400 transition-colors p-1 ${customizingWidgetId === w.id ? 'text-purple-400' : ''}`}
+                        title="Customize Widget Style"
+                      >
+                        ⚙️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWidget(w.id)}
+                        className="text-zinc-500 hover:text-red-400 transition-colors p-1"
+                        title="Remove Widget"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Visual Customize Panel */}
+                  {customizingWidgetId === w.id && (
+                    <div className="flex flex-wrap items-center gap-3 bg-zinc-900 border-b border-zinc-800 px-4 py-2.5 text-[10px] text-zinc-400 animate-slideDown select-text">
+                      <span className="font-semibold text-zinc-300 mr-1">⚙️ Customizer:</span>
+                      
+                      <div className="flex items-center gap-1.5">
+                        <span>Type:</span>
+                        <div className="flex gap-1">
+                          {['bar', 'line', 'scatter', 'pie'].map(t => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => customizeWidgetVisual(w.id, { chartType: t })}
+                              className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 hover:text-white capitalize transition-all"
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <span>Color:</span>
+                        <div className="flex gap-1.5">
+                          {[
+                            { name: 'Indigo', value: '#6366f1' },
+                            { name: 'Emerald', value: '#10b981' },
+                            { name: 'Amber', value: '#f59e0b' },
+                            { name: 'Rose', value: '#f43f5e' },
+                            { name: 'Violet', value: '#8b5cf6' }
+                          ].map(c => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => customizeWidgetVisual(w.id, { color: c.value })}
+                              style={{ backgroundColor: c.value }}
+                              className="h-3.5 w-3.5 rounded-full border border-white/10 hover:scale-110 active:scale-95 transition-all"
+                              title={c.name}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <span>Grid:</span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => customizeWidgetVisual(w.id, { showGrid: true })}
+                            className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 hover:text-white"
+                          >
+                            Show
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => customizeWidgetVisual(w.id, { showGrid: false })}
+                            className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 hover:text-white"
+                          >
+                            Hide
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Widget Body */}
                   <div className="flex-1 w-full relative overflow-hidden bg-zinc-950/20 flex flex-col justify-between">
