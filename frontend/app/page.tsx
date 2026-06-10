@@ -17,6 +17,7 @@ interface Widget {
   y: number;
   w: number;
   h: number;
+  pageId?: string;
 }
 
 export default function Dashboard() {
@@ -27,7 +28,29 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>([]);
-  const [layouts, setLayouts] = useState<any>({ lg: [] });
+  
+  // Page Report tabs states (Power BI style)
+  const [pages, setPages] = useState<{ id: string; name: string }[]>([
+    { id: 'page_default', name: 'Sales Overview' }
+  ]);
+  const [activePageId, setActivePageId] = useState<string>('page_default');
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [renamePageInput, setRenamePageInput] = useState<string>('');
+  
+  // Derived layouts containing only active page's widgets
+  const currentLayouts = {
+    lg: widgets
+      .filter((w) => (w.pageId || 'page_default') === activePageId)
+      .map((w) => ({
+        i: w.id,
+        x: w.x,
+        y: w.y,
+        w: w.w,
+        h: w.h,
+        minW: 3,
+        minH: 2,
+      })),
+  };
   
   // Track active tab view for each widget card ('chart' | 'insights' | 'code')
   const [widgetTabs, setWidgetTabs] = useState<Record<string, 'chart' | 'insights' | 'code'>>({});
@@ -329,8 +352,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleLayoutChange = (currentLayout: any, allLayouts: any) => {
-    setLayouts(allLayouts);
+  const handleLayoutChange = (currentLayout: any) => {
     setWidgets((prevWidgets) =>
       prevWidgets.map((w) => {
         const match = currentLayout.find((item: any) => item.i === w.id);
@@ -413,6 +435,7 @@ export default function Dashboard() {
       const newId = `widget_${Date.now()}`;
       const title = data.chart_json?.layout?.title?.text || `Chart: ${prompt.slice(0, 30)}...`;
       
+      const currentPageWidgets = widgets.filter((w) => (w.pageId || 'page_default') === activePageId);
       const newWidget: Widget = {
         id: newId,
         title: title,
@@ -421,26 +444,13 @@ export default function Dashboard() {
         prompt: prompt,
         insights: data.insights,
         x: 0,
-        y: widgets.length * 4,
+        y: currentPageWidgets.length * 4,
         w: 6,
         h: 4,
+        pageId: activePageId,
       };
 
-      const updatedWidgets = [...widgets, newWidget];
-      setWidgets(updatedWidgets);
-      
-      setLayouts({
-        lg: updatedWidgets.map((w) => ({
-          i: w.id,
-          x: w.x,
-          y: w.y,
-          w: w.w,
-          h: w.h,
-          minW: 3,
-          minH: 2,
-        })),
-      });
-
+      setWidgets((prev) => [...prev, newWidget]);
       setPrompt('');
     } catch (err: any) {
       console.error(err);
@@ -451,19 +461,31 @@ export default function Dashboard() {
   };
 
   const handleDeleteWidget = (id: string) => {
-    const updated = widgets.filter((w) => w.id !== id);
-    setWidgets(updated);
-    setLayouts({
-      lg: updated.map((w) => ({
-        i: w.id,
-        x: w.x,
-        y: w.y,
-        w: w.w,
-        h: w.h,
-        minW: 3,
-        minH: 2,
-      })),
-    });
+    setWidgets((prev) => prev.filter((w) => w.id !== id));
+  };
+
+  const handleAddPage = () => {
+    const newPageId = `page_${Date.now()}`;
+    const newPageNum = pages.length + 1;
+    const newPage = { id: newPageId, name: `Page ${newPageNum}` };
+    setPages([...pages, newPage]);
+    setActivePageId(newPageId);
+  };
+
+  const handleRenamePage = (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    setPages((prev) => prev.map((p) => (p.id === id ? { ...p, name: newName } : p)));
+    setEditingPageId(null);
+  };
+
+  const handleDeletePage = (id: string) => {
+    if (pages.length <= 1) return;
+    const remainingPages = pages.filter((p) => p.id !== id);
+    setPages(remainingPages);
+    setWidgets((prev) => prev.filter((w) => (w.pageId || 'page_default') !== id));
+    if (activePageId === id) {
+      setActivePageId(remainingPages[0].id);
+    }
   };
 
   const handleDownloadWidget = (w: Widget) => {
@@ -1079,14 +1101,98 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Page Tab Bar (Power BI / Tableau Style) */}
+        {mounted && (
+          <div className="mb-4 flex items-center justify-between border-b border-zinc-800 bg-zinc-950/20 px-2 py-1.5 rounded-lg backdrop-blur-sm no-print">
+            <div className="flex items-center flex-wrap gap-1">
+              {pages.map((p) => (
+                <div
+                  key={p.id}
+                  className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    activePageId === p.id
+                      ? 'bg-zinc-900 border border-zinc-800 text-purple-400 font-semibold shadow shadow-purple-500/5'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/30'
+                  }`}
+                >
+                  {editingPageId === p.id ? (
+                    <input
+                      type="text"
+                      value={renamePageInput}
+                      onChange={(e) => setRenamePageInput(e.target.value)}
+                      onBlur={() => handleRenamePage(p.id, renamePageInput)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenamePage(p.id, renamePageInput);
+                        if (e.key === 'Escape') setEditingPageId(null);
+                      }}
+                      className="bg-zinc-950 border border-zinc-700 px-1 py-0.5 rounded text-white text-[11px] w-24 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      autoFocus
+                    />
+                  ) : (
+                    <span
+                      onClick={() => {
+                        setActivePageId(p.id);
+                      }}
+                      onDoubleClick={() => {
+                        setEditingPageId(p.id);
+                        setRenamePageInput(p.name);
+                      }}
+                      className="cursor-pointer select-none"
+                      title="Double click to rename"
+                    >
+                      📄 {p.name}
+                    </span>
+                  )}
+                  
+                  {editingPageId !== p.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingPageId(p.id);
+                        setRenamePageInput(p.name);
+                      }}
+                      className="text-zinc-650 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+                      title="Rename Page"
+                    >
+                      ✏️
+                    </button>
+                  )}
+                  
+                  {pages.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePage(p.id)}
+                      className="text-zinc-650 hover:text-red-400 ml-0.5"
+                      title="Delete Page"
+                    >
+                      ×
+                  </button>
+                  )}
+                </div>
+              ))}
+              
+              <button
+                type="button"
+                onClick={handleAddPage}
+                className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-zinc-900/40 transition-all ml-1"
+                title="Add New Report Page"
+              >
+                ➕ Add Page
+              </button>
+            </div>
+            <span className="text-[10px] text-zinc-500 mr-2 select-none">
+              Report Canvas Pages
+            </span>
+          </div>
+        )}
+
         {/* Grid Canvas */}
         {!mounted ? (
           <div className="flex flex-col items-center justify-center min-h-[400px] text-zinc-500">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
             <p className="mt-4 text-xs font-medium tracking-wider">PREPARING DASHBOARD CANVAS...</p>
           </div>
-        ) : widgets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-zinc-800 rounded-xl p-12 text-center bg-zinc-900/10 backdrop-blur-sm mt-4">
+        ) : widgets.filter((w) => (w.pageId || 'page_default') === activePageId).length === 0 ? (
+          <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-zinc-800 rounded-xl p-12 text-center bg-zinc-900/10 backdrop-blur-sm mt-2">
             <div className="h-12 w-12 rounded-lg bg-zinc-900 flex items-center justify-center text-zinc-500 font-bold mb-4">
               📊
             </div>
@@ -1099,7 +1205,7 @@ export default function Dashboard() {
           <div ref={containerRef} className="bg-zinc-950/40 rounded-xl border border-zinc-850 p-2 min-h-[500px]">
             <ResponsiveGrid
               className="layout"
-              layouts={layouts}
+              layouts={currentLayouts}
               width={width}
               breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
               cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
@@ -1108,7 +1214,9 @@ export default function Dashboard() {
               draggableHandle=".widget-drag-handle"
               margin={[16, 16]}
             >
-              {widgets.map((w) => (
+              {widgets
+                .filter((w) => (w.pageId || 'page_default') === activePageId)
+                .map((w) => (
                 <div 
                   key={w.id} 
                   className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-md overflow-hidden hover:border-zinc-700/80 transition-all select-none shadow-md group animate-scaleIn"
