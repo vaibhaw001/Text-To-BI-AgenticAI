@@ -84,7 +84,7 @@ python -m venv venv
 pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-The FastAPI documentation will be available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+
 
 ### 3. Run the Next.js Frontend
 Navigate to the `frontend/` directory, install node modules, and start the Next.js development server:
@@ -93,7 +93,6 @@ cd frontend
 npm install
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser to view the dashboard.
 
 ---
 ## 🔗 Relational Data Modeling & Custom Metrics
