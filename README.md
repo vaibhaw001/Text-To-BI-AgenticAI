@@ -26,17 +26,32 @@ This application allows users to query single or multiple datasets using plain E
   - **💡 Insights**: AI descriptive summary of trace findings.
   - **💻 Code**: The raw Python code executed in the sandbox.
 
-### 4. Multi-Page Reports, Customizer, Downloads, & PDF Export
+### 4. Advanced Analytics & Explaining Spikes/Dips (Tableau Einstein & Power BI Q&A)
+- **Explain the Increase**: Click any data point to trigger growth change attribution analysis on sequential time periods, identifying which categorical factors contributed most to the variance.
+- **Key Influencers (Machine Learning)**: Identifies drivers of segment membership or high metric values by training a Decision Tree regressor (`scikit-learn`'s `DecisionTreeRegressor`) and extracting combination rules on categorical dimensions.
+- **Slide-out Insights Drawer**: A dedicated interactive drawer displaying growth attribution bar charts, Gemini executive summaries, and a follow-up Q&A text field for asking deeper questions about the data point.
+
+### 5. Automated Time-Series Forecasting & Trend Lines
+- **Holt-Winters Forecasting**: Injects double/triple Exponential Smoothing forecast models (`statsmodels.tsa.holtwinters`) into the sandbox globals, allowing the LLM to plot chronological forecasts with predictive confidence bands.
+- **OLS Trend Line Fitting**: Instantiates OLS linear regressions (`statsmodels.api.OLS`) over date or categorical timelines to render trend lines and error margin bands.
+- **Plotly Confidence Shading**: Integrates styling instructions into the system prompt to guide the LLM in rendering shaded confidence intervals using translucent Plotly Scatter fills (`fill='toself'`).
+
+### 6. Statistical Anomaly Detection & Annotations
+- **Outlier Flagging**: Exposes a sandboxed `detect_anomalies` helper supporting both standard deviation **Z-scores** and tree-based **Isolation Forests** (`sklearn.ensemble`).
+- **Interactive Tooltip Annotations**: Appends detailed outlier descriptions (e.g., Spike vs Dip, deviation percentage, and Z-score). Instructs the LLM to overlay red circle markers on anomalies and link hover indicators to the anomaly explanation text.
+
+### 7. Dashboard Bookmarks & Layout States
+- **Executive Bookmarks**: Save the active dashboard configuration (the layout positions of all charts, active cross-filtering slicers, and selected pages).
+- **Bookmarks Panel**: Access a sliding bookmarks drawer to quickly toggle, rename, and load pre-configured report states.
+
+### 8. Multi-Page Reports, Customizer, Downloads, & PDF Export
 - **Multi-Page Reports (Report Tabs)**: Organize your workspace across multiple pages/tabs (e.g. "Sales Overview" and "Product Deep-Dive"). Pages support inline renaming (double-click to edit) and deletion. Widgets are completely scoped to the page they were generated in.
 - **Visual Style Customizer**: Tweak active charts directly from the dashboard: swap chart type (bar, line, scatter, pie), change color schemes (Indigo, Emerald, Amber, Rose, Violet), and show/hide gridlines.
-- **Multi-Format Active Downloads**: Click the download button on any widget to export the active tab:
-  - Chart Tab -> Standalone interactive HTML page (Plotly embed).
-  - Insights Tab -> Analytical report text file.
-  - Code Tab -> Sandboxed executable Python script.
-- **Export PDF**: Click the header print button to launch the system print dialog and export the entire dashboard layout as a clean, stacked PDF, automatically styled for export.
+- **Multi-Format Active Downloads**: Click the download button on any widget to export the active tab: standalone interactive HTML files, text summaries, or raw Python sandbox scripts.
+- **Export PDF**: Click the header print button to export the entire dashboard layout as a clean, stacked PDF, automatically styled for export.
 
-### 5. Safe Sandbox & Self-Correction Loop
-- **Execution Sandbox**: Generated Python code runs locally inside a restricted execution sandbox, limiting builtins and allowing only essential data libraries (`pandas`, `numpy`, `plotly`, `datetime`, `json`, `math`).
+### 9. Safe Sandbox & Self-Correction Loop
+- **Execution Sandbox**: Generated Python code runs locally inside a restricted execution sandbox, limiting builtins and allowing only essential data libraries (`pandas`, `numpy`, `plotly`, `datetime`, `json`, `math`, `statsmodels`, `scipy`, `sklearn`).
 - **Traceback Self-Correction**: When syntax or execution errors are raised, the error is fed back to the LLM for self-correction (retries up to 3 times).
 
 ---
