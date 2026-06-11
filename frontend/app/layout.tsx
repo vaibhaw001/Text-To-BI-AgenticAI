@@ -16,11 +16,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className="h-full antialiased dark"
+      className="h-full antialiased"
       suppressHydrationWarning
     >
       <body 
-        className="min-h-full flex flex-col bg-zinc-950 text-zinc-50 font-sans"
+        className="min-h-full flex flex-col bg-gradient-to-tr from-[#f0f4ff] via-[#f5f3ff] to-[#fffaf0] text-zinc-800 font-sans"
         suppressHydrationWarning
       >
         {children}

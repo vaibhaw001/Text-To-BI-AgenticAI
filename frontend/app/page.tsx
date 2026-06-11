@@ -979,15 +979,13 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col min-h-screen">
       {/* Top Navbar */}
-      <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-50">
+      <header className="border-b border-[#001f7f]/10 bg-white/70 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-purple-600 via-indigo-600 to-blue-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
-              BI
-            </div>
+            <img src="/logo.png" alt="Plotlytics Logo" className="h-9 object-contain rounded" />
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white">Agentic Text-to-BI</h1>
-              <p className="text-xs text-zinc-500">Power BI Relational Model & Tableau Visual Grammar</p>
+              <h1 className="text-lg font-bold tracking-tight text-[#001f7f]">Plotlytics</h1>
+              <p className="text-xs text-zinc-500">Turning Text Into Clarity</p>
             </div>
           </div>
 

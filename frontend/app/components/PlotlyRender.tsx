@@ -24,7 +24,7 @@ export default function PlotlyRender({ data, layout, frames, config, onChartClic
     plot_bgcolor: 'rgba(0,0,0,0)',  // transparent plot area
     font: {
       family: 'system-ui, -apple-system, sans-serif',
-      color: '#a1a1aa', // tailwind zinc-400
+      color: '#3f3f46', // tailwind zinc-700 (fits light/pastel theme)
       ...layout?.font,
     },
     // Force responsiveness
@@ -36,15 +36,15 @@ export default function PlotlyRender({ data, layout, frames, config, onChartClic
       pad: 4,
       ...layout?.margin,
     },
-    // Stylize grid lines and axes to fit the dark theme
+    // Stylize grid lines and axes to fit the light pastel theme
     xaxis: {
-      gridcolor: '#27272a', // zinc-800
-      zerolinecolor: '#3f3f46', // zinc-700
+      gridcolor: '#e4e4e7', // zinc-200 (light gridlines)
+      zerolinecolor: '#d4d4d8', // zinc-300
       ...layout?.xaxis,
     },
     yaxis: {
-      gridcolor: '#27272a',
-      zerolinecolor: '#3f3f46',
+      gridcolor: '#e4e4e7', // zinc-200 (light gridlines)
+      zerolinecolor: '#d4d4d8', // zinc-300
       ...layout?.yaxis,
     }
   };

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 50%, #fff7ed 100%);
+  --foreground: #1e293b;
 }
 
 @theme inline {
@@ -10,21 +10,147 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  
+  --color-zinc-950: #f8fafc;
+  --color-zinc-900: #f1f5f9;
+  --color-zinc-850: #e2e8f0;
+  --color-zinc-800: #cbd5e1;
+  --color-zinc-700: #94a3b8;
+  --color-zinc-650: #64748b;
+  --color-zinc-600: #64748b;
+  --color-zinc-500: #475569;
+  --color-zinc-400: #334155;
+  --color-zinc-300: #1e293b;
+  --color-zinc-200: #0f172a;
+  --color-zinc-100: #0f172a;
+  --color-zinc-50: #0f172a;
+  
+  --color-purple-950: #f3e8ff;
+  --color-purple-900: #e9d5ff;
+  --color-purple-800: #c084fc;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 50%, #fff7ed 100%) !important;
+  color: #1e293b !important;
+  background-attachment: fixed !important;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Container Glassmorphism styles */
+.bg-zinc-950\/40, .bg-zinc-900\/40, .bg-zinc-900\/60, .bg-zinc-950\/20, .bg-zinc-950\/50, .bg-zinc-900\/50, .bg-zinc-900\/85, .bg-zinc-950\/95, .bg-zinc-900\/30 {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(12px) saturate(120%) !important;
+  border-color: rgba(226, 232, 240, 0.85) !important;
+}
+
+.bg-zinc-900 {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.bg-zinc-950 {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+/* Grid & Borders */
+.border-zinc-800, .border-zinc-850, .border-zinc-900, .border-zinc-700, .border-zinc-805, .border-zinc-800\/80 {
+  border-color: rgba(226, 232, 240, 0.85) !important;
+}
+
+/* Text elements */
+.text-white, .text-zinc-50, .text-zinc-200, .text-zinc-300, .text-zinc-400 {
+  color: #1e293b !important;
+}
+
+.text-zinc-500 {
+  color: #64748b !important;
+}
+
+/* Keep text white on primary buttons / gradient backgrounds */
+button.bg-gradient-to-r, 
+button.bg-purple-600,
+.bg-purple-600,
+.bg-indigo-600,
+.bg-purple-500,
+.text-white.font-bold,
+.bg-purple-600.text-white,
+button.bg-gradient-to-r *,
+button.bg-purple-500,
+.bg-gradient-to-r.from-purple-600.to-indigo-600 * {
+  color: #ffffff !important;
+}
+
+/* Make sure text in prompt input and text inputs is dark and readable */
+input[type="text"], input[type="file"], select, textarea, .relative input[type="text"] {
+  color: #0f172a !important;
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  border-color: #cbd5e1 !important;
+}
+
+input[type="text"]::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Slicer active states */
+.border-purple-500\/50, .bg-purple-950\/20 {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  background-color: rgba(243, 232, 255, 0.75) !important;
+  color: #6d28d9 !important;
+}
+
+/* Modal and slide-over drawer styling */
+.fixed.inset-y-0.right-0 {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(20px) !important;
+  border-left: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: -10px 0 25px -5px rgba(0, 0, 0, 0.04), -8px 0 10px -6px rgba(0, 0, 0, 0.04) !important;
+}
+
+.fixed.inset-y-0.right-0 .bg-zinc-950, 
+.fixed.inset-y-0.right-0 .bg-zinc-900,
+.fixed.inset-y-0.right-0 .border-zinc-900 {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+.fixed.inset-y-0.right-0 * {
+  color: #1e293b !important;
+}
+
+.fixed.inset-y-0.right-0 .text-zinc-500 {
+  color: #64748b !important;
+}
+
+.fixed.inset-y-0.right-0 .text-purple-300 {
+  color: #7c3aed !important;
+}
+
+/* Popup Context Menu overrides */
+.fixed.z-50.bg-zinc-950\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.04) !important;
+}
+.fixed.z-50.bg-zinc-950\/95 .text-zinc-300 {
+  color: #1e293b !important;
+}
+.fixed.z-50.bg-zinc-950\/95 .hover\:bg-zinc-900:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Floating customizer controls buttons styling */
+.px-2.py-0\.5.rounded.bg-zinc-950.border.border-zinc-800 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+.px-2.py-0\.5.rounded.bg-zinc-950.border.border-zinc-800:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Print layout overrides */
 @media print {
   .no-print,
   header,
@@ -35,8 +161,8 @@ body {
   }
 
   body {
-    background: #09090b !important;
-    color: #fafafa !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
   }
 
   main {
