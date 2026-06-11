@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Responsive, useContainerWidth } from 'react-grid-layout';
 import ChartWidget from './components/ChartWidget';
 
@@ -20,6 +20,22 @@ interface Widget {
   pageId?: string;
 }
 
+interface DashboardBookmark {
+  id: string;
+  name: string;
+  timestamp: number;
+  widgets: Widget[];
+  pages: { id: string; name: string }[];
+  activePageId: string;
+  globalFilters: Record<string, any>;
+  useMultipleTables: boolean;
+  tablesInput: any[];
+  relationshipsInput: any[];
+  metricsInput: any[];
+  filePath: string;
+  uploadedFileName: string | null;
+}
+
 export default function Dashboard() {
   const [prompt, setPrompt] = useState('');
   const [filePath, setFilePath] = useState('f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv');
@@ -36,6 +52,16 @@ export default function Dashboard() {
   const [activePageId, setActivePageId] = useState<string>('page_default');
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [renamePageInput, setRenamePageInput] = useState<string>('');
+  
+  // Executive Bookmarks and State persistence
+  const [bookmarks, setBookmarks] = useState<DashboardBookmark[]>([]);
+  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [newBookmarkName, setNewBookmarkName] = useState('');
+  const [editingBookmarkId, setEditingBookmarkId] = useState<string | null>(null);
+  const [renameBookmarkInput, setRenameBookmarkInput] = useState('');
+  
+  // Ref to prevent refreshing widgets during bookmark restore
+  const skipNextFilterRefreshRef = useRef(false);
   
   // Derived layouts containing only active page's widgets
   const currentLayouts = {
@@ -272,10 +298,163 @@ export default function Dashboard() {
 
   // Trigger reloading of all active widgets whenever the global filter changes
   useEffect(() => {
+    if (skipNextFilterRefreshRef.current) {
+      skipNextFilterRefreshRef.current = false;
+      return;
+    }
     if (widgets.length > 0) {
       refreshAllWidgets(globalFilters);
     }
   }, [globalFilters]);
+
+  // Load bookmarks on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('bi_dashboard_bookmarks');
+    if (saved) {
+      try {
+        setBookmarks(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse saved bookmarks", e);
+      }
+    }
+  }, []);
+
+  const isFiltersEqual = (a: Record<string, any>, b: Record<string, any>) => {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    return keysA.every(key => a[key] === b[key]);
+  };
+
+  const handleSaveBookmark = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newBookmarkName.trim()) return;
+
+    const newBookmark: DashboardBookmark = {
+      id: `bookmark_${Date.now()}`,
+      name: newBookmarkName.trim(),
+      timestamp: Date.now(),
+      widgets: JSON.parse(JSON.stringify(widgets)),
+      pages: JSON.parse(JSON.stringify(pages)),
+      activePageId,
+      globalFilters: { ...globalFilters },
+      useMultipleTables,
+      tablesInput: JSON.parse(JSON.stringify(tablesInput)),
+      relationshipsInput: JSON.parse(JSON.stringify(relationshipsInput)),
+      metricsInput: JSON.parse(JSON.stringify(metricsInput)),
+      filePath,
+      uploadedFileName
+    };
+
+    const updated = [newBookmark, ...bookmarks];
+    setBookmarks(updated);
+    localStorage.setItem('bi_dashboard_bookmarks', JSON.stringify(updated));
+    setNewBookmarkName('');
+  };
+
+  const handleLoadBookmark = (bookmark: DashboardBookmark) => {
+    // Determine if we need to skip filter refresh
+    const filtersChanged = !isFiltersEqual(globalFilters, bookmark.globalFilters);
+    if (filtersChanged) {
+      skipNextFilterRefreshRef.current = true;
+    }
+
+    // Restore dashboard configuration states
+    setWidgets(JSON.parse(JSON.stringify(bookmark.widgets)));
+    setPages(JSON.parse(JSON.stringify(bookmark.pages)));
+    setActivePageId(bookmark.activePageId);
+    setGlobalFilters({ ...bookmark.globalFilters });
+    
+    // Restore data modeling states
+    setUseMultipleTables(bookmark.useMultipleTables ?? false);
+    setTablesInput(JSON.parse(JSON.stringify(bookmark.tablesInput ?? [])));
+    setRelationshipsInput(JSON.parse(JSON.stringify(bookmark.relationshipsInput ?? [])));
+    setMetricsInput(JSON.parse(JSON.stringify(bookmark.metricsInput ?? [])));
+    setFilePath(bookmark.filePath ?? '');
+    setUploadedFileName(bookmark.uploadedFileName ?? null);
+  };
+
+  const handleDeleteBookmark = (id: string) => {
+    const updated = bookmarks.filter(b => b.id !== id);
+    setBookmarks(updated);
+    localStorage.setItem('bi_dashboard_bookmarks', JSON.stringify(updated));
+  };
+
+  const handleRenameBookmark = (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    const updated = bookmarks.map(b => b.id === id ? { ...b, name: newName.trim() } : b);
+    setBookmarks(updated);
+    localStorage.setItem('bi_dashboard_bookmarks', JSON.stringify(updated));
+    setEditingBookmarkId(null);
+  };
+
+  const handleUpdateBookmark = (id: string) => {
+    const updated = bookmarks.map(b => {
+      if (b.id !== id) return b;
+      return {
+        ...b,
+        timestamp: Date.now(),
+        widgets: JSON.parse(JSON.stringify(widgets)),
+        pages: JSON.parse(JSON.stringify(pages)),
+        activePageId,
+        globalFilters: { ...globalFilters },
+        useMultipleTables,
+        tablesInput: JSON.parse(JSON.stringify(tablesInput)),
+        relationshipsInput: JSON.parse(JSON.stringify(relationshipsInput)),
+        metricsInput: JSON.parse(JSON.stringify(metricsInput)),
+        filePath,
+        uploadedFileName
+      };
+    });
+    setBookmarks(updated);
+    localStorage.setItem('bi_dashboard_bookmarks', JSON.stringify(updated));
+  };
+
+  const handleExportBookmarks = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(bookmarks, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `bi_dashboard_bookmarks_${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleImportBookmarks = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    fileReader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (!Array.isArray(imported)) {
+          alert('Invalid bookmark file format. Expected an array of bookmarks.');
+          return;
+        }
+
+        const isValid = imported.every(b => b.id && b.name && Array.isArray(b.widgets));
+        if (!isValid) {
+          alert('Invalid bookmark data structure. Some bookmarks are missing required fields.');
+          return;
+        }
+
+        const existingMap = new Map(bookmarks.map(b => [b.id, b]));
+        imported.forEach(b => {
+          existingMap.set(b.id, b);
+        });
+
+        const merged = Array.from(existingMap.values());
+        setBookmarks(merged);
+        localStorage.setItem('bi_dashboard_bookmarks', JSON.stringify(merged));
+        e.target.value = '';
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse JSON file.');
+      }
+    };
+    fileReader.readAsText(file);
+  };
 
   const refreshAllWidgets = async (activeFilters: Record<string, any>) => {
     setIsLoading(true);
@@ -728,6 +907,24 @@ export default function Dashboard() {
                 🖨️ Export PDF
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => setShowBookmarksPanel(!showBookmarksPanel)}
+              className={`w-full sm:w-auto px-4 py-2.5 rounded-lg border text-sm font-medium transition-all active:scale-95 flex items-center justify-center gap-2 no-print ${
+                showBookmarksPanel 
+                  ? 'border-purple-500/50 bg-purple-950/20 text-purple-300 shadow-md shadow-purple-950/40' 
+                  : 'border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300'
+              }`}
+              title="Toggle Executive Views & Bookmarks"
+            >
+              🔖 Bookmarks
+              {bookmarks.length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-purple-600 text-white shadow shadow-purple-500/50">
+                  {bookmarks.length}
+                </span>
+              )}
+            </button>
           </form>
         </div>
       </header>
@@ -735,6 +932,182 @@ export default function Dashboard() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
         
+        {/* Bookmarks Section */}
+        {showBookmarksPanel && (
+          <div className="mb-6 p-5 rounded-xl border border-zinc-800 bg-zinc-900/30 backdrop-blur-md animate-fadeIn shadow-xl relative overflow-hidden">
+            {/* Ambient glows behind the panel */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 blur-3xl pointer-events-none rounded-full" />
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-500/5 blur-3xl pointer-events-none rounded-full" />
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4 mb-4 relative z-10">
+              <div>
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span className="text-purple-400">🔖</span> Executive Views & Bookmarks
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Save active layouts, filters, datasets, and custom chart configurations to switch views instantly.
+                </p>
+              </div>
+
+              {/* Import/Export buttons */}
+              <div className="flex items-center gap-2 text-xs self-start md:self-auto no-print">
+                <button
+                  type="button"
+                  onClick={handleExportBookmarks}
+                  disabled={bookmarks.length === 0}
+                  className="px-2.5 py-1.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-900 transition-all flex items-center gap-1.5"
+                  title="Export all bookmarks as a JSON file"
+                >
+                  📤 Export
+                </button>
+                <label
+                  className="px-2.5 py-1.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white cursor-pointer hover:bg-zinc-900 transition-all flex items-center gap-1.5"
+                  title="Import bookmarks from a JSON file"
+                >
+                  📥 Import
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBookmarks}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Save Current State Form */}
+            <form onSubmit={handleSaveBookmark} className="flex gap-2 mb-5 max-w-md no-print relative z-10">
+              <input
+                type="text"
+                placeholder="Name current view (e.g. Sales Overview Q2)..."
+                value={newBookmarkName}
+                onChange={(e) => setNewBookmarkName(e.target.value)}
+                className="flex-1 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-950/50 text-xs text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500/60 transition-all"
+              />
+              <button
+                type="submit"
+                disabled={!newBookmarkName.trim()}
+                className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-indigo-500/20 active:scale-95 shadow-md"
+              >
+                Save View
+              </button>
+            </form>
+
+            {/* Bookmark List / Grid */}
+            {bookmarks.length === 0 ? (
+              <div className="text-center py-6 text-zinc-500 border border-dashed border-zinc-800/60 rounded-lg bg-zinc-950/10 relative z-10">
+                <span className="text-lg block mb-1">📭</span>
+                <p className="text-xs">No bookmarks saved yet. Save your current dashboard layout and filters above.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative z-10">
+                {bookmarks.map((b) => (
+                  <div
+                    key={b.id}
+                    className="group p-3.5 rounded-lg border border-zinc-800/80 bg-zinc-950/30 hover:border-purple-500/30 hover:bg-zinc-950/60 transition-all duration-300 shadow-sm hover:shadow-md flex flex-col justify-between"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        {editingBookmarkId === b.id ? (
+                          <input
+                            type="text"
+                            value={renameBookmarkInput}
+                            onChange={(e) => setRenameBookmarkInput(e.target.value)}
+                            onBlur={() => handleRenameBookmark(b.id, renameBookmarkInput)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRenameBookmark(b.id, renameBookmarkInput);
+                              if (e.key === 'Escape') setEditingBookmarkId(null);
+                            }}
+                            className="w-full px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            autoFocus
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <h3
+                              onClick={() => handleLoadBookmark(b)}
+                              className="font-bold text-xs text-zinc-200 group-hover:text-purple-400 cursor-pointer truncate max-w-[190px] transition-colors"
+                              title="Click to apply this dashboard view"
+                            >
+                              {b.name}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingBookmarkId(b.id);
+                                setRenameBookmarkInput(b.name);
+                              }}
+                              className="text-[10px] opacity-0 group-hover:opacity-100 hover:text-zinc-300 transition-opacity"
+                              title="Rename View"
+                            >
+                              ✏️
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-zinc-650 mt-1">
+                          {new Date(b.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded bg-purple-950/35 border border-purple-900/30 text-purple-400 uppercase tracking-wider scale-95 select-none">
+                        View
+                      </span>
+                    </div>
+
+                    {/* Quick Metadata Indicator badges */}
+                    <div className="flex flex-wrap gap-1.5 mt-3 text-[9px] text-zinc-400">
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-900/60 border border-zinc-805/80">
+                        📊 {b.widgets?.length || 0} {b.widgets?.length === 1 ? 'Chart' : 'Charts'}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-900/60 border border-zinc-805/80">
+                        📄 {b.pages?.length || 1} {b.pages?.length === 1 ? 'Page' : 'Pages'}
+                      </span>
+                      {Object.keys(b.globalFilters || {}).length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-950/40 border border-indigo-900/20 text-indigo-400 font-semibold" title={Object.entries(b.globalFilters).map(([k,v]) => `${k}:${v}`).join(', ')}>
+                          ⚡ {Object.keys(b.globalFilters).length} {Object.keys(b.globalFilters).length === 1 ? 'Filter' : 'Filters'}
+                        </span>
+                      )}
+                      {b.useMultipleTables && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-900/20 text-amber-400 font-semibold">
+                          🔗 Relational Model
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bookmark Action Footer */}
+                    <div className="flex items-center justify-between border-t border-zinc-900/60 pt-2.5 mt-3 no-print">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadBookmark(b)}
+                        className="text-[11px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1 active:scale-95 duration-150"
+                      >
+                        ⚡ Apply View
+                      </button>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateBookmark(b.id)}
+                          className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                          title="Save current state and overwrite this bookmark"
+                        >
+                          🔄 Update
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBookmark(b.id)}
+                          className="text-[10px] text-red-500/80 hover:text-red-400 transition-colors"
+                          title="Delete View"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Power BI-style Active Slicers Pane */}
         {Object.keys(globalFilters).length > 0 && (
           <div className="mb-6 p-4 rounded-xl border border-indigo-500/20 bg-indigo-950/10 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fadeIn shadow-lg shadow-indigo-500/5">
