@@ -17,8 +17,12 @@ export default function RootLayout({
     <html
       lang="en"
       className="h-full antialiased dark"
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-50 font-sans">
+      <body 
+        className="min-h-full flex flex-col bg-zinc-950 text-zinc-50 font-sans"
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>
