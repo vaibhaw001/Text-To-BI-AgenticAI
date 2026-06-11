@@ -52,7 +52,7 @@ Execution Environment Rules:
 - The output code MUST define the final Plotly Figure and assign it to a variable named `fig`.
 - Return ONLY the raw python code inside a ```python ``` markdown block. No explanations, no markdown comments outside the code block, no print statements.
 - Do NOT use fig.show() or fig.write_html().
-- Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime, statsmodels, scipy.
+- Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime, statsmodels, scipy, sklearn.
 
 Time Intelligence & Forecasting Helpers (Already imported in execution environment, use directly if needed):
 - `calculate_ytd(df, date_col, val_col)`: Returns a Pandas Series of chronological YTD cumulative sum values resetting at start of each calendar year.
@@ -60,6 +60,7 @@ Time Intelligence & Forecasting Helpers (Already imported in execution environme
 - `calculate_yoy_growth(df, date_col, val_col)`: Returns a DataFrame with columns: `[date_col, f'total_{val_col}', 'yoy_growth_percent']` containing monthly year-over-year growth percentage.
 - `calculate_forecast(df, date_col, val_col, periods=30, confidence_level=0.95)`: Generates a future forecast using Holt-Winters Exponential Smoothing. Returns a DataFrame with columns: `[date_col, val_col, 'forecast', 'lower_ci', 'upper_ci']` where the forecasted dates contain actuals in `forecast` and confidence intervals in `lower_ci` / `upper_ci`.
 - `calculate_trend_line(df, x_col, y_col, confidence_level=0.95)`: Performs linear OLS regression on x_col and y_col. Returns a DataFrame with columns: `[x_col, y_col, 'trend', 'lower_ci', 'upper_ci']`.
+- `detect_anomalies(df, val_col, method='z_score', z_threshold=2.0, contamination=0.05)`: Identifies statistical outliers in a numeric column. Returns the input DataFrame with two new columns: `['is_anomaly' (bool), 'anomaly_description' (str)]` explaining the outlier spike/dip and the percentage deviation from average.
 
 Aesthetics for Shaded Trend/Confidence Regions in Plotly:
 To draw a shaded confidence interval region (upper/lower bounds), add a `go.Scatter` trace with:
@@ -70,6 +71,27 @@ To draw a shaded confidence interval region (upper/lower bounds), add a `go.Scat
   line=dict(color='rgba(255,255,255,0)') (to hide the boundary line)
   showlegend=False (or set name='Confidence Interval')
 Ensure the confidence region is added BEFORE the trend line or historical trace so the line draws on top of the shading.
+
+Aesthetics for Anomaly Markers & Pointers in Plotly:
+When highlighting anomalies/outliers, mark them overlayed on the primary series. For example:
+  # Find anomalies
+  anom_df = detect_anomalies(df, 'Sales')
+  outliers = anom_df[anom_df['is_anomaly']]
+  # Plot outliers as a scatter layer with hover text containing 'anomaly_description'
+  fig.add_trace(go.Scatter(
+      x=outliers['Date'],
+      y=outliers['Sales'],
+      mode='markers',
+      marker=dict(
+          color='rgba(239, 68, 68, 0.95)',
+          size=11,
+          symbol='circle-open',
+          line=dict(width=2.5, color='rgba(239, 68, 68, 1.0)')
+      ),
+      text=outliers['anomaly_description'],
+      hoverinfo='text+x+y',
+      name='Anomaly/Outlier'
+  ))
 """
 
 def extract_chart_data_summary(fig: Any) -> str:

@@ -5,7 +5,8 @@ import plotly
 from typing import Dict, Any, Tuple
 
 # Set of allowed top-level modules for import
-ALLOWED_MODULES = {'pandas', 'plotly', 'numpy', 'datetime', 'json', 'math', 'statsmodels', 'scipy'}
+ALLOWED_MODULES = {'pandas', 'plotly', 'numpy', 'datetime', 'json', 'math', 'statsmodels', 'scipy', 'sklearn'}
+
 
 def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     base_module = name.split('.')[0]
@@ -247,7 +248,95 @@ def calculate_trend_line(
         except Exception as fallback_err:
             raise ValueError(f"Trend line failed: {str(fallback_err)}")
 
+def detect_anomalies(
+    df: pd.DataFrame,
+    val_col: str,
+    method: str = 'z_score',
+    z_threshold: float = 2.0,
+    contamination: float = 0.05
+) -> pd.DataFrame:
+    """
+    Identifies anomalies in a DataFrame for a numeric column.
+    Returns the input DataFrame with two new columns:
+      - 'is_anomaly': boolean Series (True for outliers, False otherwise)
+      - 'anomaly_description': string Series explaining the anomaly (spike or dip, deviation info)
+    """
+    import numpy as np
+    import logging
+    
+    logger = logging.getLogger("text-to-bi-backend.anomalies")
+    
+    try:
+        temp = df.copy()
+        if len(temp) == 0:
+            temp['is_anomaly'] = pd.Series(dtype=bool)
+            temp['anomaly_description'] = pd.Series(dtype=str)
+            return temp
+            
+        y_vals = pd.to_numeric(temp[val_col], errors='coerce').fillna(0.0).values
+        
+        is_anomaly = np.zeros(len(temp), dtype=bool)
+        descriptions = [""] * len(temp)
+        
+        # Calculate base statistics for description
+        mean_val = np.mean(y_vals)
+        std_val = np.std(y_vals)
+        
+        if method == 'z_score':
+            if std_val > 0:
+                z_scores = (y_vals - mean_val) / std_val
+                is_anomaly = np.abs(z_scores) > z_threshold
+            else:
+                is_anomaly = np.zeros(len(temp), dtype=bool)
+        elif method == 'isolation_forest':
+            from sklearn.ensemble import IsolationForest
+            X = y_vals.reshape(-1, 1)
+            clf = IsolationForest(contamination=contamination, random_state=42)
+            preds = clf.fit_predict(X)
+            is_anomaly = preds == -1
+        else:
+            raise ValueError(f"Unknown anomaly detection method: '{method}'. Supported: 'z_score', 'isolation_forest'")
+            
+        # Build descriptions
+        for i in range(len(temp)):
+            if is_anomaly[i]:
+                val = y_vals[i]
+                diff_mean = val - mean_val
+                direction = "Spike" if diff_mean >= 0 else "Dip"
+                pct_dev = (diff_mean / mean_val * 100.0) if mean_val != 0 else 0.0
+                z_info = f", Z-score: {diff_mean/std_val:.2f}" if std_val > 0 else ""
+                descriptions[i] = f"Outlier ({direction}): {val:.2f} ({pct_dev:+.1f}% from avg{z_info})"
+            else:
+                descriptions[i] = "Normal"
+                
+        temp['is_anomaly'] = is_anomaly
+        temp['anomaly_description'] = descriptions
+        return temp
+        
+    except Exception as e:
+        logger.error(f"Anomaly detection error: {str(e)}")
+        try:
+            temp = df.copy()
+            y_vals = pd.to_numeric(temp[val_col], errors='coerce').fillna(0.0).values
+            mean_val = np.mean(y_vals)
+            std_val = np.std(y_vals) if np.std(y_vals) > 0 else 1.0
+            
+            is_anomaly = np.abs(y_vals - mean_val) > (z_threshold * std_val)
+            descriptions = []
+            for i, val in enumerate(y_vals):
+                if is_anomaly[i]:
+                    dir_str = "Spike" if val >= mean_val else "Dip"
+                    descriptions.append(f"Outlier ({dir_str}): {val:.2f}")
+                else:
+                    descriptions.append("Normal")
+            temp['is_anomaly'] = is_anomaly
+            temp['anomaly_description'] = descriptions
+            return temp
+        except Exception as fallback_err:
+            raise ValueError(f"Anomaly detection failed: {str(fallback_err)}")
+
 def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[go.Figure, str]:
+
     """
     Executes Python Plotly code against the provided dictionary of tables (DataFrames)
     in a restricted sandbox environment.
@@ -307,6 +396,7 @@ def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[
         'calculate_yoy_growth': calculate_yoy_growth,
         'calculate_forecast': calculate_forecast,
         'calculate_trend_line': calculate_trend_line,
+        'detect_anomalies': detect_anomalies,
     }
     
     # Set up local environment, injecting all tables as variables in local scope
