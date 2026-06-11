@@ -12,7 +12,7 @@ interface PlotlyRenderProps {
   layout: any;
   frames?: any[];
   config?: any;
-  onChartClick?: (point: any) => void;
+  onChartClick?: (point: any, event?: any) => void;
 }
 
 export default function PlotlyRender({ data, layout, frames, config, onChartClick }: PlotlyRenderProps) {
@@ -67,7 +67,7 @@ export default function PlotlyRender({ data, layout, frames, config, onChartClic
         useResizeHandler={true}
         onClick={(clickData: any) => {
           if (onChartClick && clickData && clickData.points && clickData.points.length > 0) {
-            onChartClick(clickData.points[0]);
+            onChartClick(clickData.points[0], clickData.event);
           }
         }}
       />

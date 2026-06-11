@@ -20,7 +20,7 @@ const PlotlyRender = dynamic(() => import('./PlotlyRender'), {
 
 interface ChartWidgetProps {
   chartJson: any;
-  onChartClick?: (point: any) => void;
+  onChartClick?: (point: any, event?: any) => void;
 }
 
 export default function ChartWidget({ chartJson, onChartClick }: ChartWidgetProps) {

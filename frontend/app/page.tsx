@@ -62,6 +62,45 @@ export default function Dashboard() {
   
   // Ref to prevent refreshing widgets during bookmark restore
   const skipNextFilterRefreshRef = useRef(false);
+
+  // Advanced Analytics & AI Q&A States
+  const [clickPopup, setClickPopup] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    colName: string;
+    value: any;
+    metricCol: string;
+    metricVal: any;
+    widgetId: string;
+    comparisonVal?: any;
+  } | null>(null);
+
+  const [aiAnalysisState, setAiAnalysisState] = useState<{
+    isOpen: boolean;
+    isLoading: boolean;
+    targetCol: string;
+    targetVal: any;
+    metricCol: string;
+    comparisonVal: any | null;
+    question: string;
+    summary: string | null;
+    keyInfluencers: { factor: string; impact: string; percentage?: number; type: string }[];
+    error: string | null;
+  }>({
+    isOpen: false,
+    isLoading: false,
+    targetCol: '',
+    targetVal: null,
+    metricCol: '',
+    comparisonVal: null,
+    question: '',
+    summary: null,
+    keyInfluencers: [],
+    error: null
+  });
+
+  const [customQuestionInput, setCustomQuestionInput] = useState('');
   
   // Derived layouts containing only active page's widgets
   const currentLayouts = {
@@ -761,38 +800,167 @@ export default function Dashboard() {
     }
   };
 
+  const getComparisonVal = (point: any) => {
+    if (!point || !point.data || !point.data.x || !point.x) return undefined;
+    const xArr = point.data.x;
+    const idx = xArr.indexOf(point.x);
+    if (idx > 0) {
+      return xArr[idx - 1];
+    }
+    return undefined;
+  };
+
+  const runExplainInsight = async (questionText?: string, compVal?: any) => {
+    if (!clickPopup) return;
+    
+    const targetCol = clickPopup.colName;
+    const targetVal = clickPopup.value;
+    const metricCol = clickPopup.metricCol;
+    
+    setAiAnalysisState({
+      isOpen: true,
+      isLoading: true,
+      targetCol,
+      targetVal,
+      metricCol,
+      comparisonVal: compVal !== undefined ? compVal : null,
+      question: questionText || `What drives ${metricCol} in ${targetCol} ${targetVal}?`,
+      summary: null,
+      keyInfluencers: [],
+      error: null
+    });
+    setClickPopup(null); // Close context menu
+
+    try {
+      const payload: any = {
+        target_column: targetCol,
+        target_value: targetVal,
+        metric_column: metricCol,
+        comparison_value: compVal !== undefined ? compVal : null,
+        question: questionText || null,
+        filters: globalFilters,
+      };
+
+      if (useMultipleTables) {
+        payload.tables = tablesInput.map(t => {
+          const tConf: any = { name: t.name };
+          if (t.sourceType === 'db') {
+            tConf.db_connection = {
+              db_type: t.dbType,
+              connection_string: t.dbConn,
+              table_name: t.dbTable || null,
+              query: t.dbQuery || null
+            };
+          } else {
+            tConf.path = t.path;
+          }
+          return tConf;
+        });
+        if (relationshipsInput.length > 0) {
+          const apiRel: Record<string, string[]> = {};
+          relationshipsInput.forEach(r => {
+            if (r.from_table && r.from_col) apiRel[r.from_table] = [r.from_col];
+            if (r.to_table && r.to_col) apiRel[r.to_table] = [r.to_col];
+          });
+          payload.relationships = apiRel;
+        }
+      } else {
+        payload.file_path = filePath;
+      }
+
+      if (metricsInput.length > 0) {
+        payload.metrics = metricsInput.map(m => ({
+          name: m.name,
+          expression: m.expression,
+          table: m.table
+        }));
+      }
+
+      const res = await fetch('http://127.0.0.1:8000/api/explain-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to analyze drivers.');
+      }
+
+      setAiAnalysisState(prev => ({
+        ...prev,
+        isLoading: false,
+        summary: data.summary,
+        keyInfluencers: data.key_influencers,
+        error: null
+      }));
+
+    } catch (err: any) {
+      console.error(err);
+      setAiAnalysisState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: err.message || 'An unexpected error occurred during analysis.'
+      }));
+    }
+  };
+
   // Tableau Cross-Filtering: Capture clicks on Plotly points and apply as a dashboard filter
-  const handleChartClick = (point: any) => {
-    console.log("Chart clicked:", point);
+  const handleChartClick = (point: any, event?: any) => {
+    console.log("Chart clicked:", point, event);
     
     // 1. Try to extract column name from X or Y axis titles (which holds DF column names)
     let colName = point.xaxis?.title?.text;
     let val = point.x;
+    let metricColName = 'Sales';
+    let metricVal = point.y;
 
     if (point.yaxis?.title?.text && isNaN(Number(point.y))) {
       colName = point.yaxis.title.text;
       val = point.y;
+      metricColName = point.xaxis?.title?.text || 'Sales';
+      metricVal = point.x;
+    } else if (point.yaxis?.title?.text) {
+      metricColName = point.yaxis.title.text;
+      metricVal = point.y;
     }
 
     // Pie chart fallback
     if (!colName && point.label) {
       colName = point.data?.labelsrc || 'Category';
       val = point.label;
+      metricColName = 'Sales';
+      metricVal = point.value;
     }
 
     if (!colName) {
-      // General fallback
       colName = 'Category';
     }
 
-    // Clean column name (removing HTML formatting Plotly sometimes adds)
     colName = colName.replace(/<[^>]*>/g, '').trim();
+    metricColName = metricColName.replace(/<[^>]*>/g, '').trim();
     
     if (colName && val !== undefined) {
-      setGlobalFilters(prev => ({
-        ...prev,
-        [colName]: val
-      }));
+      if (event && event.clientX && event.clientY) {
+        // Show the context menu at mouse coordinates
+        setClickPopup({
+          visible: true,
+          x: event.clientX,
+          y: event.clientY,
+          colName,
+          value: val,
+          metricCol: metricColName,
+          metricVal: metricVal,
+          widgetId: point.data?.uid || 'widget',
+          comparisonVal: getComparisonVal(point)
+        });
+      } else {
+        // Fallback to cross-filtering
+        setGlobalFilters(prev => ({
+          ...prev,
+          [colName]: val
+        }));
+      }
     }
   };
 
@@ -1758,6 +1926,209 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* Floating Context Menu Popover */}
+      {clickPopup && clickPopup.visible && (
+        <div 
+          className="fixed z-50 min-w-[200px] bg-zinc-950/95 border border-zinc-800 rounded-lg shadow-xl py-1 animate-fadeIn no-print backdrop-blur-md"
+          style={{ top: clickPopup.y + 5, left: clickPopup.x + 5 }}
+        >
+          {/* Close Backdrop */}
+          <div className="fixed inset-0 z-[-1]" onClick={() => setClickPopup(null)} />
+          
+          <div className="px-3 py-1.5 border-b border-zinc-900 text-[10px] text-zinc-500 font-semibold select-none">
+            {clickPopup.colName}: <span className="text-zinc-300 font-bold">{String(clickPopup.value)}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setGlobalFilters(prev => ({
+                ...prev,
+                [clickPopup.colName]: clickPopup.value
+              }));
+              setClickPopup(null);
+            }}
+            className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors flex items-center gap-1.5"
+          >
+            <span>⚡</span> Apply Cross-Filter
+          </button>
+
+          <button
+            type="button"
+            onClick={() => runExplainInsight(`What drives ${clickPopup.metricCol} in ${clickPopup.colName} ${clickPopup.value}?`)}
+            className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors flex items-center gap-1.5"
+          >
+            <span>🧠</span> Analyze Key Influencers
+          </button>
+
+          {clickPopup.comparisonVal !== undefined && (
+            <button
+              type="button"
+              onClick={() => runExplainInsight(
+                `Explain the increase from ${clickPopup.comparisonVal} to ${clickPopup.value} in ${clickPopup.metricCol}`,
+                clickPopup.comparisonVal
+              )}
+              className="w-full text-left px-3 py-2 text-xs text-purple-400 hover:bg-zinc-900 hover:text-purple-300 transition-colors flex items-center gap-1.5 border-t border-zinc-900/60"
+            >
+              <span>📈</span> Explain the Increase (from {String(clickPopup.comparisonVal)})
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Slide-over Analytics Drawer */}
+      <div 
+        className={`fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-zinc-950 border-l border-zinc-800 shadow-2xl transition-transform duration-300 transform no-print flex flex-col justify-between ${
+          aiAnalysisState.isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Drawer Header */}
+        <div className="flex items-center justify-between p-4 border-b border-zinc-900 bg-zinc-950 z-10 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg text-purple-400 animate-pulse">🧠</span>
+            <div>
+              <h2 className="text-sm font-bold text-white">Intelligent AI Analysis</h2>
+              <p className="text-[10px] text-zinc-500">Tableau Einstein & Power BI Q&A Engine</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAiAnalysisState(prev => ({ ...prev, isOpen: false }))}
+            className="text-zinc-500 hover:text-white text-xs px-2 py-1 rounded bg-zinc-900 border border-zinc-850 transition-colors"
+          >
+            ✕ Close
+          </button>
+        </div>
+
+        {/* Drawer Content */}
+        <div className="p-5 overflow-y-auto flex-1 space-y-6">
+          
+          {/* Target Context Info */}
+          <div className="p-3.5 rounded-lg border border-purple-500/20 bg-purple-950/10 flex flex-col gap-1.5">
+            <span className="text-[9px] uppercase tracking-wider font-bold text-purple-400">Analysis Scope</span>
+            <div className="text-xs text-zinc-300">
+              Analyzing drivers for <span className="text-white font-bold">{aiAnalysisState.metricCol}</span> where <span className="text-white font-semibold">{aiAnalysisState.targetCol}</span> is <span className="text-purple-300 font-bold">{String(aiAnalysisState.targetVal)}</span>
+              {aiAnalysisState.comparisonVal !== null && (
+                <span> (compared to <span className="text-zinc-400 font-bold">{String(aiAnalysisState.comparisonVal)}</span>)</span>
+              )}
+            </div>
+            <div className="text-[11px] text-zinc-500 italic mt-1">
+              "{aiAnalysisState.question}"
+            </div>
+          </div>
+
+          {aiAnalysisState.isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+              <div className="text-center">
+                <p className="text-xs font-semibold text-zinc-300">Running ML Analytics...</p>
+                <p className="text-[10px] text-zinc-500 mt-1 max-w-[250px]">Training decision tree & calculating subsegment attribution...</p>
+              </div>
+            </div>
+          ) : aiAnalysisState.error ? (
+            <div className="p-4 rounded-lg border border-red-500/20 bg-red-950/25 text-red-400 text-xs">
+              <span className="font-bold">Analysis Failed: </span> {aiAnalysisState.error}
+            </div>
+          ) : (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* AI Narrative Summary */}
+              {aiAnalysisState.summary && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wide">💡 AI Executive Summary</h3>
+                  <div className="p-4 rounded-lg bg-zinc-900/40 border border-zinc-900 text-xs text-zinc-350 leading-relaxed select-text font-medium">
+                    {aiAnalysisState.summary}
+                  </div>
+                </div>
+              )}
+
+              {/* Key Influencers Visual List */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wide">📊 Top Correlated Factors</h3>
+                {aiAnalysisState.keyInfluencers.length === 0 ? (
+                  <p className="text-xs text-zinc-500 italic">No significant key influencers detected for this slice.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {aiAnalysisState.keyInfluencers.map((inf, idx) => {
+                      const rawPct = Math.abs(inf.percentage ?? 0);
+                      const pctWidth = rawPct > 0 ? Math.min(rawPct, 100) : 50;
+                      
+                      return (
+                        <div 
+                          key={idx} 
+                          className="p-3 rounded-lg border border-zinc-900 bg-zinc-950/50 hover:bg-zinc-900/20 transition-all flex flex-col gap-2 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-xs text-zinc-200">{inf.factor}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded capitalize ${
+                              inf.type === 'increase' 
+                                ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30' 
+                                : 'bg-red-950/40 text-red-400 border border-red-900/30'
+                            }`}>
+                              {inf.type === 'increase' ? '▲ Increase' : '▼ Decrease'}
+                            </span>
+                          </div>
+
+                          <p className="text-[11px] text-zinc-400 leading-normal select-text font-medium">{inf.impact}</p>
+
+                          {/* Progress bar visual for impact share */}
+                          <div className="w-full flex items-center gap-2 mt-1">
+                            <div className="flex-1 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                              <div 
+                                style={{ width: `${pctWidth}%` }} 
+                                className={`h-full rounded-full ${
+                                  inf.type === 'increase' ? 'bg-emerald-500' : 'bg-red-500'
+                                }`} 
+                              />
+                            </div>
+                            {inf.percentage !== undefined && (
+                              <span className="text-[10px] font-semibold text-zinc-400 min-w-[28px] text-right">
+                                {inf.percentage > 0 ? '+' : ''}{inf.percentage}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+        </div>
+
+        {/* Q&A Input Box at the bottom */}
+        <div className="p-4 border-t border-zinc-900 bg-zinc-950 shrink-0">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (customQuestionInput.trim()) {
+                runExplainInsight(customQuestionInput.trim(), aiAnalysisState.comparisonVal);
+                setCustomQuestionInput('');
+              }
+            }} 
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              placeholder="Ask a follow-up question (e.g., 'What drives sales in Laptop?')..."
+              value={customQuestionInput}
+              onChange={(e) => setCustomQuestionInput(e.target.value)}
+              disabled={aiAnalysisState.isLoading}
+              className="flex-1 px-3 py-2 rounded-lg border border-zinc-805 bg-zinc-900/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
+            />
+            <button
+              type="submit"
+              disabled={aiAnalysisState.isLoading || !customQuestionInput.trim()}
+              className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 active:scale-95 shadow-md shadow-indigo-600/10"
+            >
+              Ask
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

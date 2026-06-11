@@ -8,9 +8,10 @@ from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig
+from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig, InsightRequest, InsightResponse
 from app.core.data import read_dataset, DataModel
 from app.core.agent import generate_chart_with_retry
+from app.core.analytics import merge_data_model, perform_change_attribution, perform_key_influencers, generate_analytics_summary
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -224,6 +225,184 @@ async def generate_chart(request: ChartRequest):
             success=False,
             error=f"Execution/Generation Error: {str(e)}",
             history=locals().get('history', [])
+        )
+
+@app.post("/api/explain-insight", response_model=InsightResponse)
+async def explain_insight(request: InsightRequest):
+    import numpy as np
+    logger.info(f"Received explain-insight request. Target: {request.target_column}={request.target_value}, Metric: {request.metric_column}")
+    try:
+        # 1. Load the data (similar to generate-chart)
+        if request.tables:
+            logger.info(f"Loading relational tables: {len(request.tables)}")
+            loaded_tables = {}
+            for t_config in request.tables:
+                if t_config.db_connection:
+                    loaded_tables[t_config.name] = read_db_table(t_config.db_connection)
+                elif t_config.path:
+                    loaded_tables[t_config.name] = read_dataset(t_config.path)
+                else:
+                    raise ValueError(f"Table '{t_config.name}' must have either 'path' or 'db_connection' configured.")
+            data_model = DataModel(tables=loaded_tables, relationships=request.relationships)
+        elif request.file_path:
+            logger.info(f"Loading single table: {request.file_path}")
+            df = read_dataset(request.file_path)
+            data_model = DataModel(tables={"df": df}, relationships={})
+        else:
+            raise ValueError("Either 'file_path' or 'tables' must be provided in the request.")
+
+        # Evaluate custom calculated metrics on loaded DataFrames
+        if request.metrics:
+            logger.info(f"Evaluating custom metrics: {len(request.metrics)}")
+            for metric in request.metrics:
+                tbl_name = metric.table
+                if len(data_model.tables) == 1:
+                    tbl_name = list(data_model.tables.keys())[0]
+                
+                if tbl_name in data_model.tables:
+                    df = data_model.tables[tbl_name]
+                    try:
+                        data_model.tables[tbl_name][metric.name] = df.eval(metric.expression)
+                    except Exception as e:
+                        logger.error(f"Failed to evaluate metric '{metric.name}' on table '{tbl_name}': {str(e)}")
+                        raise ValueError(f"Failed to calculate metric '{metric.name}': {str(e)}")
+                else:
+                    raise ValueError(f"Target table '{tbl_name}' for metric '{metric.name}' not found.")
+
+        # Apply filters to DataFrames if provided
+        if request.filters:
+            logger.info(f"Applying filters to dataset: {request.filters}")
+            for col, val in request.filters.items():
+                for tbl_name, df in data_model.tables.items():
+                    if col in df.columns:
+                        if isinstance(val, list):
+                            data_model.tables[tbl_name] = df[df[col].isin(val)]
+                        else:
+                            data_model.tables[tbl_name] = df[df[col] == val]
+
+        # 2. Merge data model tables into a single unified DataFrame
+        df_merged = merge_data_model(data_model)
+        if df_merged.empty:
+            raise ValueError("The dataset is empty after loading and filtering.")
+
+        # Verify target column and metric column exist
+        if request.target_column not in df_merged.columns:
+            raise ValueError(f"Target column '{request.target_column}' was not found in the dataset columns: {list(df_merged.columns)}")
+        
+        # Verify metric column
+        if request.metric_column not in df_merged.columns:
+            # Case insensitive search
+            found = False
+            for col in df_merged.columns:
+                if col.lower() == request.metric_column.lower():
+                    request.metric_column = col
+                    found = True
+                    break
+            if not found:
+                numeric_cols = df_merged.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 0:
+                    request.metric_column = numeric_cols[0]
+                else:
+                    raise ValueError(f"Metric column '{request.metric_column}' was not found, and no numeric fallback column exists.")
+
+        # 3. Instantiate LLM based on environment configuration
+        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        model_name = os.getenv("LLM_MODEL", "gpt-4o")
+        
+        if provider == "google":
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            google_api_key = os.getenv("GOOGLE_API_KEY")
+            if not google_api_key:
+                raise ValueError("GOOGLE_API_KEY is not set.")
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                temperature=0.0,
+                google_api_key=google_api_key
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                raise ValueError("OPENAI_API_KEY is not set.")
+            llm = ChatOpenAI(
+                model=model_name,
+                temperature=0.0,
+                openai_api_key=openai_api_key
+            )
+
+        # 4. Perform Statistical Analysis
+        baseline_stats = {}
+        if request.comparison_value is not None:
+            # Change Attribution
+            comp_val, target_val, drivers = perform_change_attribution(
+                df_merged,
+                request.target_column,
+                request.target_value,
+                request.comparison_value,
+                request.metric_column
+            )
+            net_change = target_val - comp_val
+            pct_change = (net_change / comp_val) * 100.0 if comp_val != 0 else 0.0
+            baseline_stats = {
+                "comp_total": comp_val,
+                "target_total": target_val,
+                "net_change": net_change,
+                "pct_change": pct_change
+            }
+            influencers = [
+                KeyInfluencerItem(
+                    factor=d["factor"],
+                    impact=f"Contributed {d['percentage']}% ({d['absolute_change']:.2f} absolute) to the total change",
+                    percentage=d["percentage"],
+                    type=d["type"]
+                ) for d in drivers
+            ]
+        else:
+            # Key Influencers / drivers
+            drivers = perform_key_influencers(
+                df_merged,
+                request.target_column,
+                request.target_value,
+                request.metric_column
+            )
+            baseline_avg = float(df_merged[request.metric_column].mean()) if len(df_merged) > 0 else 0.0
+            baseline_stats = {
+                "baseline_avg": baseline_avg
+            }
+            influencers = [
+                KeyInfluencerItem(
+                    factor=d["factor"],
+                    impact=d["impact"],
+                    percentage=d["percentage"],
+                    type=d["type"]
+                ) for d in drivers
+            ]
+
+        # 5. Generate AI Executive Summary via LLM
+        summary = generate_analytics_summary(
+            metric_col=request.metric_column,
+            target_col=request.target_column,
+            target_val=request.target_value,
+            comparison_val=request.comparison_value,
+            question=request.question,
+            baseline_stats=baseline_stats,
+            drivers=drivers,
+            llm=llm
+        )
+
+        return InsightResponse(
+            success=True,
+            summary=summary,
+            key_influencers=influencers
+        )
+
+    except Exception as e:
+        logger.error(f"Error in explain-insight: {str(e)}", exc_info=True)
+        return InsightResponse(
+            success=False,
+            summary=f"Analysis failed: {str(e)}",
+            key_influencers=[],
+            error=str(e)
         )
 
 if __name__ == "__main__":
