@@ -5,7 +5,7 @@ import plotly
 from typing import Dict, Any, Tuple
 
 # Set of allowed top-level modules for import
-ALLOWED_MODULES = {'pandas', 'plotly', 'numpy', 'datetime', 'json', 'math'}
+ALLOWED_MODULES = {'pandas', 'plotly', 'numpy', 'datetime', 'json', 'math', 'statsmodels', 'scipy'}
 
 def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     base_module = name.split('.')[0]
@@ -51,6 +51,201 @@ def calculate_yoy_growth(df: pd.DataFrame, date_col: str, val_col: str) -> pd.Da
         return agg[[date_col, val_col, 'yoy_growth_percent']].rename(columns={val_col: f'total_{val_col}'})
     except Exception as e:
         raise ValueError(f"Error calculating YoY growth: {str(e)}")
+
+def calculate_forecast(
+    df: pd.DataFrame, 
+    date_col: str, 
+    val_col: str, 
+    periods: int = 30, 
+    confidence_level: float = 0.95
+) -> pd.DataFrame:
+    """
+    Computes time-series forecast using Holt-Winters Exponential Smoothing.
+    Returns a DataFrame with columns: [date_col, val_col, 'forecast', 'lower_ci', 'upper_ci'].
+    """
+    import numpy as np
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    from scipy.stats import norm
+    import logging
+    
+    logger = logging.getLogger("text-to-bi-backend.forecast")
+    
+    try:
+        temp = df.copy()
+        temp[date_col] = pd.to_datetime(temp[date_col])
+        daily_series = temp.groupby(date_col)[val_col].sum().sort_index()
+        
+        freq = pd.infer_freq(daily_series.index)
+        if not freq:
+            freq = 'D'
+        daily_series = daily_series.asfreq(freq, fill_value=0.0)
+        
+        n_obs = len(daily_series)
+        seasonal_periods = 7 if freq == 'D' else (12 if freq in ['M', 'MS'] else 4)
+        
+        trend_type = 'add' if n_obs >= 4 else None
+        seasonal_type = 'add' if n_obs >= (seasonal_periods * 2) else None
+        
+        model = ExponentialSmoothing(
+            daily_series,
+            trend=trend_type,
+            seasonal=seasonal_type,
+            seasonal_periods=seasonal_periods if seasonal_type else None
+        )
+        fit = model.fit()
+        
+        forecast_series = fit.forecast(periods)
+        
+        residuals = fit.resid
+        se_residual = np.std(residuals) if len(residuals) > 0 else 0.0
+        
+        alpha = 1.0 - confidence_level
+        z_val = norm.ppf(1.0 - alpha / 2.0)
+        
+        forecast_dates = forecast_series.index
+        forecast_vals = forecast_series.values
+        
+        lower_bounds = []
+        upper_bounds = []
+        for h in range(1, periods + 1):
+            se_h = se_residual * np.sqrt(h)
+            lower_bounds.append(forecast_vals[h - 1] - z_val * se_h)
+            upper_bounds.append(forecast_vals[h - 1] + z_val * se_h)
+            
+        hist_df = pd.DataFrame({
+            date_col: daily_series.index,
+            val_col: daily_series.values,
+            'forecast': np.nan,
+            'lower_ci': np.nan,
+            'upper_ci': np.nan
+        })
+        
+        fore_df = pd.DataFrame({
+            date_col: forecast_dates,
+            val_col: np.nan,
+            'forecast': forecast_vals,
+            'lower_ci': lower_bounds,
+            'upper_ci': upper_bounds
+        })
+        
+        result = pd.concat([hist_df, fore_df], ignore_index=True)
+        if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+            result[date_col] = result[date_col].dt.strftime('%Y-%m-%d')
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Forecasting error: {str(e)}")
+        try:
+            temp = df.copy()
+            temp[date_col] = pd.to_datetime(temp[date_col])
+            daily_series = temp.groupby(date_col)[val_col].sum().sort_index()
+            x_vals = np.arange(len(daily_series))
+            y_vals = daily_series.values
+            slope, intercept = np.polyfit(x_vals, y_vals, 1)
+            
+            future_x = np.arange(len(daily_series), len(daily_series) + periods)
+            future_y = slope * future_x + intercept
+            
+            se_residual = np.std(y_vals - (slope * x_vals + intercept)) if len(y_vals) > 1 else 1.0
+            z_val = 1.96
+            
+            lower_bounds = [future_y[i] - z_val * se_residual * np.sqrt(i + 1) for i in range(periods)]
+            upper_bounds = [future_y[i] + z_val * se_residual * np.sqrt(i + 1) for i in range(periods)]
+            
+            freq = pd.infer_freq(daily_series.index) or 'D'
+            # Fixed date offset logic
+            last_date = daily_series.index[-1]
+            future_dates = pd.date_range(start=last_date + pd.tseries.frequencies.to_offset(freq), periods=periods, freq=freq)
+            
+            hist_df = pd.DataFrame({
+                date_col: daily_series.index,
+                val_col: y_vals,
+                'forecast': np.nan,
+                'lower_ci': np.nan,
+                'upper_ci': np.nan
+            })
+            fore_df = pd.DataFrame({
+                date_col: future_dates,
+                val_col: np.nan,
+                'forecast': future_y,
+                'lower_ci': lower_bounds,
+                'upper_ci': upper_bounds
+            })
+            result = pd.concat([hist_df, fore_df], ignore_index=True)
+            if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+                result[date_col] = result[date_col].dt.strftime('%Y-%m-%d')
+            return result
+        except Exception as fallback_err:
+            raise ValueError(f"Forecasting failed and fallback also failed: {str(fallback_err)}")
+
+def calculate_trend_line(
+    df: pd.DataFrame, 
+    x_col: str, 
+    y_col: str, 
+    confidence_level: float = 0.95
+) -> pd.DataFrame:
+    """
+    Computes linear regression trend line and confidence bands.
+    Returns a DataFrame with columns: [x_col, y_col, 'trend', 'lower_ci', 'upper_ci'].
+    """
+    import statsmodels.api as sm
+    import numpy as np
+    import logging
+    
+    logger = logging.getLogger("text-to-bi-backend.trend")
+    
+    try:
+        temp = df.copy()
+        
+        is_date = False
+        if pd.api.types.is_datetime64_any_dtype(temp[x_col]) or temp[x_col].dtype == 'object':
+            try:
+                temp['__x_dt'] = pd.to_datetime(temp[x_col])
+                temp['__x_num'] = temp['__x_dt'].apply(lambda x: x.toordinal())
+                x_vals = temp['__x_num'].values
+                is_date = True
+            except Exception:
+                x_vals = np.arange(len(temp))
+        else:
+            x_vals = temp[x_col].values
+            
+        y_vals = temp[y_col].values
+        
+        X = sm.add_constant(x_vals)
+        model = sm.OLS(y_vals, X)
+        results = model.fit()
+        
+        predictions = results.get_prediction(X)
+        summary_frame = predictions.summary_frame(alpha=1.0 - confidence_level)
+        
+        temp['trend'] = summary_frame['mean'].values
+        temp['lower_ci'] = summary_frame['mean_ci_lower'].values
+        temp['upper_ci'] = summary_frame['mean_ci_upper'].values
+        
+        cols = [x_col, y_col, 'trend', 'lower_ci', 'upper_ci']
+        return temp[cols]
+        
+    except Exception as e:
+        logger.error(f"Trend line error: {str(e)}")
+        try:
+            temp = df.copy()
+            x_raw = np.arange(len(temp))
+            y_vals = temp[y_col].values
+            slope, intercept = np.polyfit(x_raw, y_vals, 1)
+            y_pred = slope * x_raw + intercept
+            
+            residuals = y_vals - y_pred
+            std_err = np.std(residuals) if len(residuals) > 0 else 1.0
+            
+            temp['trend'] = y_pred
+            temp['lower_ci'] = y_pred - 1.96 * std_err
+            temp['upper_ci'] = y_pred + 1.96 * std_err
+            
+            cols = [x_col, y_col, 'trend', 'lower_ci', 'upper_ci']
+            return temp[cols]
+        except Exception as fallback_err:
+            raise ValueError(f"Trend line failed: {str(fallback_err)}")
 
 def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[go.Figure, str]:
     """
@@ -110,6 +305,8 @@ def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[
         'calculate_ytd': calculate_ytd,
         'calculate_rolling_average': calculate_rolling_average,
         'calculate_yoy_growth': calculate_yoy_growth,
+        'calculate_forecast': calculate_forecast,
+        'calculate_trend_line': calculate_trend_line,
     }
     
     # Set up local environment, injecting all tables as variables in local scope

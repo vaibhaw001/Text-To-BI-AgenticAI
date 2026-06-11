@@ -52,12 +52,24 @@ Execution Environment Rules:
 - The output code MUST define the final Plotly Figure and assign it to a variable named `fig`.
 - Return ONLY the raw python code inside a ```python ``` markdown block. No explanations, no markdown comments outside the code block, no print statements.
 - Do NOT use fig.show() or fig.write_html().
-- Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime.
+- Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime, statsmodels, scipy.
 
-Time Intelligence Helpers (Already imported in execution environment, use directly if needed):
+Time Intelligence & Forecasting Helpers (Already imported in execution environment, use directly if needed):
 - `calculate_ytd(df, date_col, val_col)`: Returns a Pandas Series of chronological YTD cumulative sum values resetting at start of each calendar year.
 - `calculate_rolling_average(df, date_col, val_col, window=7)`: Returns a Pandas Series of chronological rolling average values.
 - `calculate_yoy_growth(df, date_col, val_col)`: Returns a DataFrame with columns: `[date_col, f'total_{val_col}', 'yoy_growth_percent']` containing monthly year-over-year growth percentage.
+- `calculate_forecast(df, date_col, val_col, periods=30, confidence_level=0.95)`: Generates a future forecast using Holt-Winters Exponential Smoothing. Returns a DataFrame with columns: `[date_col, val_col, 'forecast', 'lower_ci', 'upper_ci']` where the forecasted dates contain actuals in `forecast` and confidence intervals in `lower_ci` / `upper_ci`.
+- `calculate_trend_line(df, x_col, y_col, confidence_level=0.95)`: Performs linear OLS regression on x_col and y_col. Returns a DataFrame with columns: `[x_col, y_col, 'trend', 'lower_ci', 'upper_ci']`.
+
+Aesthetics for Shaded Trend/Confidence Regions in Plotly:
+To draw a shaded confidence interval region (upper/lower bounds), add a `go.Scatter` trace with:
+  x = list(x_vals) + list(x_vals)[::-1]
+  y = list(upper_ci) + list(lower_ci)[::-1]
+  fill='toself'
+  fillcolor='rgba(99, 102, 241, 0.15)' (use a translucent shade of indigo or matching theme color)
+  line=dict(color='rgba(255,255,255,0)') (to hide the boundary line)
+  showlegend=False (or set name='Confidence Interval')
+Ensure the confidence region is added BEFORE the trend line or historical trace so the line draws on top of the shading.
 """
 
 def extract_chart_data_summary(fig: Any) -> str:
