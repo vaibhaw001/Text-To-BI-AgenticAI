@@ -3,6 +3,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly
 from typing import Dict, Any, Tuple
+from app.core.dax import CALCULATE, SUMX, AVERAGEX, USERELATIONSHIP, DIVIDE
 
 # Set of allowed top-level modules for import
 ALLOWED_MODULES = {'pandas', 'plotly', 'numpy', 'datetime', 'json', 'math', 'statsmodels', 'scipy', 'sklearn'}
@@ -502,6 +503,11 @@ def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[
         'calculate_forecast': calculate_forecast,
         'calculate_trend_line': calculate_trend_line,
         'detect_anomalies': detect_anomalies,
+        'CALCULATE': CALCULATE,
+        'SUMX': SUMX,
+        'AVERAGEX': AVERAGEX,
+        'USERELATIONSHIP': USERELATIONSHIP,
+        'DIVIDE': DIVIDE,
     }
     
     # Set up local environment, injecting all tables as variables in local scope

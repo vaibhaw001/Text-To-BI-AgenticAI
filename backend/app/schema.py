@@ -6,6 +6,16 @@ class DbConnectionConfig(BaseModel):
     connection_string: str = Field(..., description="SQLAlchemy connection URL (e.g. sqlite:///data.db)")
     table_name: Optional[str] = Field(None, description="The table name to load from the database")
     query: Optional[str] = Field(None, description="Optional SQL query to load data instead of a full table")
+    direct_query: bool = Field(False, description="If true, generates and executes SQL directly instead of loading into Pandas")
+
+class RelationshipConfig(BaseModel):
+    from_table: str = Field(..., description="Source table name")
+    from_column: str = Field(..., description="Source column name")
+    to_table: str = Field(..., description="Target table name")
+    to_column: str = Field(..., description="Target column name")
+    cardinality: str = Field("1:N", description="Relationship cardinality (1:1, 1:N, N:1, M:N)")
+    cross_filter_direction: str = Field("single", description="Filter propagation direction (single, both)")
+    is_active: bool = Field(True, description="Whether the relationship is active by default")
 
 class TableConfig(BaseModel):
     name: str = Field(..., description="The variable name assigned to the table (e.g., 'Sales')")
@@ -21,9 +31,9 @@ class ChartRequest(BaseModel):
     prompt: str = Field(..., description="The visualization and analysis instruction from the user")
     file_path: Optional[str] = Field(None, description="Path of dataset (for single table queries)")
     tables: Optional[List[TableConfig]] = Field(None, description="Optional configuration for multiple relational tables")
-    relationships: Optional[Dict[str, List[str]]] = Field(
+    relationships: Optional[List[RelationshipConfig]] = Field(
         None, 
-        description="Dictionary defining foreign key mappings (e.g. {'Sales': ['product_id'], 'Products': ['id']})"
+        description="List defining star schema relationships and filter propagation"
     )
     filters: Optional[Dict[str, Any]] = Field(
         None,
@@ -45,7 +55,7 @@ class ChartResponse(BaseModel):
 class InsightRequest(BaseModel):
     file_path: Optional[str] = Field(None, description="Path of dataset (for single table queries)")
     tables: Optional[List[TableConfig]] = Field(None, description="Optional configuration for multiple relational tables")
-    relationships: Optional[Dict[str, List[str]]] = Field(None, description="Table relationships mapping")
+    relationships: Optional[List[RelationshipConfig]] = Field(None, description="Table relationships mapping")
     filters: Optional[Dict[str, Any]] = Field(None, description="Current active filters applied to the dashboard")
     metrics: Optional[List[MetricConfig]] = Field(None, description="Calculated metrics catalog definitions")
     
@@ -70,7 +80,7 @@ class InsightResponse(BaseModel):
 class TooltipRequest(BaseModel):
     file_path: Optional[str] = Field(None, description="Path of dataset")
     tables: Optional[List[TableConfig]] = Field(None, description="Relational tables")
-    relationships: Optional[Dict[str, List[str]]] = Field(None, description="Table relationships")
+    relationships: Optional[List[RelationshipConfig]] = Field(None, description="Table relationships")
     filters: Optional[Dict[str, Any]] = Field(None, description="Current dashboard filters")
     metrics: Optional[List[MetricConfig]] = Field(None, description="Calculated metrics definitions")
     

@@ -72,6 +72,13 @@ Time Intelligence & Forecasting Helpers (Already imported in execution environme
 - `calculate_forecast(df, date_col, val_col, periods=30, confidence_level=0.95)`: Generates a future forecast using Holt-Winters Exponential Smoothing. Returns a DataFrame with columns: `[date_col, val_col, 'forecast', 'lower_ci', 'upper_ci']` where the forecasted dates contain actuals in `forecast` and confidence intervals in `lower_ci` / `upper_ci`.
 - `calculate_trend_line(df, x_col, y_col, confidence_level=0.95)`: Performs linear OLS regression on x_col and y_col. Returns a DataFrame with columns: `[x_col, y_col, 'trend', 'lower_ci', 'upper_ci']`.
 - `detect_anomalies(df, val_col, method='z_score', z_threshold=2.0, contamination=0.05)`: Identifies statistical outliers in a numeric column. Returns the input DataFrame with two new columns: `['is_anomaly' (bool), 'anomaly_description' (str)]` explaining the outlier spike/dip and the percentage deviation from average.
+
+DAX-Style Semantic Measure Engine Helpers (Already imported):
+- `CALCULATE(df, measure_lambda, *filter_series)`: Evaluates a measure within a modified context. e.g. `CALCULATE(df, lambda d: d['Sales'].sum(), d['Region'] == 'North')`
+- `SUMX(df, expression_lambda)`: Evaluates an expression for each row and sums it. e.g. `SUMX(df, lambda row: row['Qty'] * row['Price'])`
+- `AVERAGEX(df, expression_lambda)`: Evaluates an expression for each row and averages it.
+- `USERELATIONSHIP(df1, df2, col1, col2, how="inner")`: Explicitly merges tables on columns.
+- `DIVIDE(numerator, denominator, alternate_result=0.0)`: Safe division.
 """
 
 def extract_chart_data_summary(fig: Any) -> str:

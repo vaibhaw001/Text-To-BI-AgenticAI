@@ -122,8 +122,24 @@ async def generate_chart(request: ChartRequest):
     logger.info(f"Received chart request. Prompt: {request.prompt}")
     
     try:
+        is_direct_query = any(t.db_connection and t.db_connection.direct_query for t in request.tables) if request.tables else False
+        
         # 1. Initialize DataModel based on single or multi-table request
-        if request.tables:
+        if is_direct_query:
+            logger.info("Using DirectQuery Mode for database connection.")
+            from app.core.direct_query import execute_direct_query
+            # Get the first direct_query connection string
+            conn_string = next(t.db_connection.connection_string for t in request.tables if t.db_connection and t.db_connection.direct_query)
+            
+            # Execute SQL via LLM and get result
+            df = execute_direct_query(request.prompt, conn_string)
+            data_model = DataModel(tables={"df_direct": df}, relationships=[])
+            
+            # Since the data is already aggregated by the SQL query, 
+            # we append a hint to the prompt for the visualization agent
+            request.prompt = f"Using the pre-aggregated data, {request.prompt}"
+            
+        elif request.tables:
             logger.info(f"Initializing relational model with {len(request.tables)} tables.")
             loaded_tables = {}
             for t_config in request.tables:
@@ -139,7 +155,7 @@ async def generate_chart(request: ChartRequest):
         elif request.file_path:
             logger.info(f"Initializing single-table model from: {request.file_path}")
             df = read_dataset(request.file_path)
-            data_model = DataModel(tables={"df": df}, relationships={})
+            data_model = DataModel(tables={"df": df}, relationships=[])
             
         else:
             raise ValueError("Either 'file_path' or 'tables' must be provided in the request.")
@@ -247,7 +263,7 @@ async def explain_insight(request: InsightRequest):
         elif request.file_path:
             logger.info(f"Loading single table: {request.file_path}")
             df = read_dataset(request.file_path)
-            data_model = DataModel(tables={"df": df}, relationships={})
+            data_model = DataModel(tables={"df": df}, relationships=[])
         else:
             raise ValueError("Either 'file_path' or 'tables' must be provided in the request.")
 
@@ -423,7 +439,7 @@ async def get_tooltip_data(request: TooltipRequest):
             data_model = DataModel(tables=loaded_tables, relationships=request.relationships)
         elif request.file_path:
             df = read_dataset(request.file_path)
-            data_model = DataModel(tables={"df": df}, relationships={})
+            data_model = DataModel(tables={"df": df}, relationships=[])
         else:
             raise ValueError("Either 'file_path' or 'tables' must be provided.")
 
