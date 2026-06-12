@@ -37,22 +37,31 @@ def extract_python_code(text: Any) -> str:
 
 # System prompt for visual design rules (Grammar of Graphics & Tableau visuals) and Relational Modeling
 SYSTEM_PROMPT = """You are a senior data scientist and visualization expert.
-Your goal is to write clean, valid, executable Python Plotly code to answer analytical queries about a relational database schema.
+Your goal is to answer analytical queries about a relational database schema by preparing the data and mapping it to Tableau's Visual Grammar (Shelves).
 
-You must design visualizations using the Grammar of Graphics approach (like Tableau/ggplot2), ensuring:
-1. Modern design: Use premium, tailored colors and clean layouts. Avoid raw default primary colors. Prefer cohesive color schemes, sleek gradients, or professional HSL colors.
-2. Structure: Ensure proper title, axis labels with units, and visible legend (if mapping multiple series).
-3. Aesthetics: Use clean layouts (e.g. template='plotly_dark' or 'plotly_white', hide outer borders, customize gridlines to be light and subtle).
-4. Grammar of Graphics mapping: Match data dimensions (categorical, temporal) and measures (numerical values) to appropriate visual channels (X, Y, color, size, line style).
+You must NOT write raw Plotly graphing code. Instead, you must:
+1. Write Python code to merge and prepare the data, assigning the final result to `df_chart`.
+2. Define a dictionary named `chart_config` mapping the schema to visual shelves.
+
+The `chart_config` dictionary MUST have the following structure:
+{
+    "mark": "bar" | "line" | "scatter" | "pie" | "area",
+    "columns": ["X_Axis_Column"],  # X-axis / dimensions
+    "rows": ["Y_Axis_Column"],     # Y-axis / measures
+    "color": "Color_Column_or_None",
+    "size": "Size_Column_or_None",
+    "detail": "Detail_Column_or_None",
+    "label": "Label_Column_or_None",
+    "title": "Chart Title"
+}
 
 Execution Environment Rules:
 - The DataFrames are loaded in your execution context as variables named matching their table names (e.g., `Sales`, `Products`, or `df` if a single-table dataset).
 - Do NOT try to read or load the dataset. Do NOT use pd.read_csv() or define mock data.
-- MULTI-TABLE MERGES (Power BI style): If the query requires columns from multiple tables, you MUST merge them first. Write valid pandas `pd.merge()` statements using the defined foreign-key relationships before generating the Plotly chart.
-- The output code MUST define the final Plotly Figure and assign it to a variable named `fig`.
+- MULTI-TABLE MERGES (Power BI style): If the query requires columns from multiple tables, you MUST merge them first. Write valid pandas `pd.merge()` statements using the defined foreign-key relationships.
+- The output code MUST define the final prepared dataframe as `df_chart` and the shelf assignments as `chart_config`.
 - Return ONLY the raw python code inside a ```python ``` markdown block. No explanations, no markdown comments outside the code block, no print statements.
-- Do NOT use fig.show() or fig.write_html().
-- Restrict imports to: pandas (as pd), plotly.express (as px), plotly.graph_objects (as go), numpy (as np), json, math, datetime, statsmodels, scipy, sklearn.
+- Restrict imports to: pandas (as pd), numpy (as np), json, math, datetime, statsmodels, scipy, sklearn.
 
 Time Intelligence & Forecasting Helpers (Already imported in execution environment, use directly if needed):
 - `calculate_ytd(df, date_col, val_col)`: Returns a Pandas Series of chronological YTD cumulative sum values resetting at start of each calendar year.
@@ -61,37 +70,6 @@ Time Intelligence & Forecasting Helpers (Already imported in execution environme
 - `calculate_forecast(df, date_col, val_col, periods=30, confidence_level=0.95)`: Generates a future forecast using Holt-Winters Exponential Smoothing. Returns a DataFrame with columns: `[date_col, val_col, 'forecast', 'lower_ci', 'upper_ci']` where the forecasted dates contain actuals in `forecast` and confidence intervals in `lower_ci` / `upper_ci`.
 - `calculate_trend_line(df, x_col, y_col, confidence_level=0.95)`: Performs linear OLS regression on x_col and y_col. Returns a DataFrame with columns: `[x_col, y_col, 'trend', 'lower_ci', 'upper_ci']`.
 - `detect_anomalies(df, val_col, method='z_score', z_threshold=2.0, contamination=0.05)`: Identifies statistical outliers in a numeric column. Returns the input DataFrame with two new columns: `['is_anomaly' (bool), 'anomaly_description' (str)]` explaining the outlier spike/dip and the percentage deviation from average.
-
-Aesthetics for Shaded Trend/Confidence Regions in Plotly:
-To draw a shaded confidence interval region (upper/lower bounds), add a `go.Scatter` trace with:
-  x = list(x_vals) + list(x_vals)[::-1]
-  y = list(upper_ci) + list(lower_ci)[::-1]
-  fill='toself'
-  fillcolor='rgba(99, 102, 241, 0.15)' (use a translucent shade of indigo or matching theme color)
-  line=dict(color='rgba(255,255,255,0)') (to hide the boundary line)
-  showlegend=False (or set name='Confidence Interval')
-Ensure the confidence region is added BEFORE the trend line or historical trace so the line draws on top of the shading.
-
-Aesthetics for Anomaly Markers & Pointers in Plotly:
-When highlighting anomalies/outliers, mark them overlayed on the primary series. For example:
-  # Find anomalies
-  anom_df = detect_anomalies(df, 'Sales')
-  outliers = anom_df[anom_df['is_anomaly']]
-  # Plot outliers as a scatter layer with hover text containing 'anomaly_description'
-  fig.add_trace(go.Scatter(
-      x=outliers['Date'],
-      y=outliers['Sales'],
-      mode='markers',
-      marker=dict(
-          color='rgba(239, 68, 68, 0.95)',
-          size=11,
-          symbol='circle-open',
-          line=dict(width=2.5, color='rgba(239, 68, 68, 1.0)')
-      ),
-      text=outliers['anomaly_description'],
-      hoverinfo='text+x+y',
-      name='Anomaly/Outlier'
-  ))
 """
 
 def extract_chart_data_summary(fig: Any) -> str:
@@ -198,7 +176,7 @@ def generate_chart_with_retry(
 User Query:
 "{prompt}"
 
-Generate the Python Plotly code to answer this query. Merge tables if columns span multiple tables. Remember to assign the figure to the variable `fig`."""
+Generate the Python code to prepare the data and define the Visual Grammar mapping. Merge tables if columns span multiple tables. Remember to assign the final dataframe to `df_chart` and the visual grammar dictionary to `chart_config`."""
 
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
@@ -276,7 +254,7 @@ Please fix the error and write the complete corrected code. Make sure that:
 1. You merge tables using pd.merge(TableA, TableB, left_on='...', right_on='...') if you need to use columns from different tables.
 2. The DataFrame variables are already available in your environment (e.g. if tables are `Sales` and `Products`, they are available as `Sales` and `Products` variables). Do not reload them.
 3. Check table and column spelling carefully against the schema.
-4. Define the final chart and assign it to the variable `fig`."""
+4. Define the final prepared dataframe as `df_chart` and the shelf assignments as `chart_config`."""
             
             messages.append(HumanMessage(content=correction_message))
             

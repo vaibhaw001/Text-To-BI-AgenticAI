@@ -335,6 +335,66 @@ def detect_anomalies(
         except Exception as fallback_err:
             raise ValueError(f"Anomaly detection failed: {str(fallback_err)}")
 
+def build_figure_from_grammar(df: pd.DataFrame, chart_config: Dict[str, Any]) -> go.Figure:
+    """
+    Builds a Plotly figure based on Tableau Visual Grammar shelves.
+    """
+    mark = chart_config.get("mark", "bar").lower()
+    columns = chart_config.get("columns", [])
+    rows = chart_config.get("rows", [])
+    color = chart_config.get("color")
+    size = chart_config.get("size")
+    detail = chart_config.get("detail")  # For grouping without color
+    label = chart_config.get("label")
+    title = chart_config.get("title", "")
+
+    x_col = columns[0] if columns else None
+    y_col = rows[0] if rows else None
+    
+    kwargs = {}
+    if color and color in df.columns:
+        kwargs["color"] = color
+    if size and size in df.columns and mark in ['scatter']:
+        kwargs["size"] = size
+    if label and label in df.columns:
+        kwargs["text"] = label
+        
+    if detail and detail in df.columns and mark in ['line', 'scatter']:
+        if 'color' not in kwargs: # Detail is usually for separation when color isn't used
+            kwargs['color'] = detail
+        elif kwargs.get('color') != detail:
+            kwargs['symbol'] = detail # Fallback mapping detail to symbol for scatter
+
+    try:
+        if mark == "bar":
+            fig = px.bar(df, x=x_col, y=y_col, title=title, **kwargs)
+        elif mark == "line":
+            fig = px.line(df, x=x_col, y=y_col, title=title, **kwargs)
+        elif mark == "scatter":
+            fig = px.scatter(df, x=x_col, y=y_col, title=title, **kwargs)
+        elif mark == "pie":
+            names = x_col or color
+            values = y_col
+            fig = px.pie(df, names=names, values=values, title=title, **kwargs)
+        elif mark == "area":
+            fig = px.area(df, x=x_col, y=y_col, title=title, **kwargs)
+        else:
+            fig = px.bar(df, x=x_col, y=y_col, title=title, **kwargs)
+            
+        fig.update_layout(
+            template="plotly_white",
+            margin=dict(l=40, r=40, t=60, b=40),
+            title_x=0.5,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(gridcolor='rgba(0,0,0,0.1)', zerolinecolor='rgba(0,0,0,0.2)')
+        
+        return fig
+    except Exception as e:
+        raise ValueError(f"Error building figure from grammar: {str(e)}")
+
 def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[go.Figure, str]:
 
     """
@@ -401,6 +461,8 @@ def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[
     
     # Set up local environment, injecting all tables as variables in local scope
     local_env = {
+        'df_chart': None,
+        'chart_config': None,
         'fig': None,
         **tables
     }
@@ -409,11 +471,18 @@ def execute_chart_code(code_str: str, tables: Dict[str, pd.DataFrame]) -> Tuple[
     exec(code_str, global_env, local_env)
     
     # Retrieve and validate result
+    df_chart = local_env.get('df_chart')
+    chart_config = local_env.get('chart_config')
     fig = local_env.get('fig')
-    if fig is None:
-        raise ValueError("Code executed successfully but failed to define a 'fig' variable.")
+    
+    # If LLM still assigned fig directly, we can optionally support it,
+    # but primarily we want df_chart and chart_config.
+    if df_chart is not None and chart_config is not None:
+        fig = build_figure_from_grammar(df_chart, chart_config)
+    elif fig is None:
+        raise ValueError("Code executed successfully but failed to define 'df_chart' and 'chart_config', or 'fig'.")
         
     if not isinstance(fig, (go.Figure, plotly.graph_objs.Figure)):
-        raise TypeError(f"The 'fig' variable must be a Plotly Figure, found '{type(fig).__name__}'.")
+        raise TypeError(f"The constructed figure must be a Plotly Figure, found '{type(fig).__name__}'.")
         
     return fig, code_str
