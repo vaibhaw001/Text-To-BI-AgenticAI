@@ -9,9 +9,10 @@ This application allows users to query single or multiple datasets using plain E
 ## 🚀 Key Features
 
 ### 1. Relational Data Modeling & Multi-Source Engine (Power BI Style)
-- **Hybrid Data Sources**: Connect to local `.csv` / `.xlsx` files or query live SQL databases (SQLite, PostgreSQL) directly using SQLAlchemy connection strings.
+- **Hybrid Data Sources & DirectQuery**: Connect to local `.csv` / `.xlsx` files or query live SQL databases (SQLite, PostgreSQL, Snowflake) directly using SQLAlchemy connection strings. Toggle `direct_query=True` to compile natural language into optimized SQL on-the-fly and stream aggregates without loading massive tables into memory.
+- **Star Schema & Filter Propagation**: Define full Star Schema relationships with directionality (Single vs Both) and cardinality (1:N, M:N). Filtering a dimension table natively propagates semi-joins to filter the connected fact tables before any visualization rendering occurs.
 - **Heuristics Auto-Relationship Detection**: If join keys are omitted, the backend heuristically maps tables using exact key matching (e.g., `store_id`) and key-substring matching (e.g., mapping `Products.id` to `Sales.product_id`).
-- **Custom Calculated Metrics Catalog**: Define calculated columns in the data model (e.g., `Margin = (Sales - Cost) / Sales`) which are pre-evaluated using Pandas `.eval()` and registered for the LLM to easily query.
+- **DAX-Style Semantic Measure Engine**: A fully-fledged Python emulation layer injects DAX equivalents (`CALCULATE()`, `USERELATIONSHIP()`, `SUMX()`, `AVERAGEX()`, `DIVIDE()`) into the LLM execution sandbox, allowing context-aware dynamic KPI measures that adapt perfectly to the current dashboard slicers.
 - **Time Intelligence Sandbox Helpers**: Pre-injected sandbox functions (`calculate_ytd`, `calculate_rolling_average`, `calculate_yoy_growth`) allow the LLM to generate accurate chronological aggregates easily.
 
 ### 2. Interactive Slicers & Tableau Cross-Filtering
@@ -106,9 +107,10 @@ The application supports advanced multi-table models, live database loading, and
 1. **Toggle Model View**: Click the **Model** toggle in the navbar to open advanced configuration.
 2. **Configure Data Tables**: 
    - Add multiple tables.
-   - Choose **File** source to upload local CSV/Excel files, or **Database** source to connect to SQLite or PostgreSQL engines using SQLAlchemy connection URIs. Verify connections instantly using the **Test Connection** button.
-3. **Set Join Relationships**: Define explicit foreign key relationships (e.g., `Sales.product_id` to `Products.id`), or leave blank to let the heuristic engine resolve columns automatically.
-4. **Define Custom Calculated Columns**: Add custom formulas to the Metrics Catalog (e.g. `ProfitMargin` with formula `(Sales - Cost) / Sales` on table `df`).
+   - Choose **File** source to upload local CSV/Excel files, or **Database** source to connect to SQL engines using SQLAlchemy connection URIs.
+   - You can optionally enable **DirectQuery** to skip loading tables into Pandas and execute queries natively against the database.
+3. **Set Join Relationships (Star Schema)**: Define explicit foreign key relationships (e.g., `Sales.product_id` to `Products.id`), configure Cardinality (1:N), and set Cross-Filter Direction (Single or Both). Or leave blank to let the heuristic engine resolve columns automatically.
+4. **Define Custom Calculated Columns / Measures**: Add custom DAX-style formulas to the Metrics Catalog to be used by the visualization agent.
 5. **Ask Plain English Queries**: Enter your prompt (e.g. *"Show ProfitMargin by category"* or *"Plot rolling average sales over time"*).
 6. **Multi-Page Dashboard Scoping**: Add pages using the `➕ Add Page` button in the report pages bar above the canvas. Rename pages by double-clicking the page name or clicking the pencil ✏️ icon. Widgets and dashboard layouts are scoped to the active page, enabling multi-tab dashboard storytelling.
 
