@@ -21,9 +21,11 @@ const PlotlyRender = dynamic(() => import('./PlotlyRender'), {
 interface ChartWidgetProps {
   chartJson: any;
   onChartClick?: (point: any, event?: any) => void;
+  widgetId?: string;
+  dashboardContext?: any;
 }
 
-export default function ChartWidget({ chartJson, onChartClick }: ChartWidgetProps) {
+export default function ChartWidget({ chartJson, onChartClick, widgetId, dashboardContext }: ChartWidgetProps) {
   if (!chartJson) {
     return (
       <div className="w-full h-full flex items-center justify-center text-zinc-500 text-sm">
@@ -39,6 +41,8 @@ export default function ChartWidget({ chartJson, onChartClick }: ChartWidgetProp
       frames={chartJson.frames}
       config={chartJson.config}
       onChartClick={onChartClick}
+      widgetId={widgetId}
+      dashboardContext={dashboardContext}
     />
   );
 }

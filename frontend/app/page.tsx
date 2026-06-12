@@ -1872,6 +1872,15 @@ export default function Dashboard() {
                           <ChartWidget 
                             chartJson={w.chartJson} 
                             onChartClick={handleChartClick} // Tableau Cross-Filtering trigger
+                            widgetId={w.id}
+                            dashboardContext={{
+                              filePath,
+                              tablesInput,
+                              useMultipleTables,
+                              relationshipsInput,
+                              metricsInput,
+                              globalFilters
+                            }}
                           />
                         </div>
                       )}

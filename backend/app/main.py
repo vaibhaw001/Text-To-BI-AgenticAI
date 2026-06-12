@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig, InsightRequest, InsightResponse
+from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig, InsightRequest, InsightResponse, TooltipRequest, TooltipResponse
 from app.core.data import read_dataset, DataModel
 from app.core.agent import generate_chart_with_retry
 from app.core.analytics import merge_data_model, perform_change_attribution, perform_key_influencers, generate_analytics_summary
@@ -404,6 +404,111 @@ async def explain_insight(request: InsightRequest):
             key_influencers=[],
             error=str(e)
         )
+
+@app.post("/api/tooltip-data", response_model=TooltipResponse)
+async def get_tooltip_data(request: TooltipRequest):
+    import numpy as np
+    logger.info(f"Received tooltip-data request. Target: {request.target_column}={request.target_value}, Metric: {request.metric_column}")
+    try:
+        # Load the data
+        if request.tables:
+            loaded_tables = {}
+            for t_config in request.tables:
+                if t_config.db_connection:
+                    loaded_tables[t_config.name] = read_db_table(t_config.db_connection)
+                elif t_config.path:
+                    loaded_tables[t_config.name] = read_dataset(t_config.path)
+                else:
+                    raise ValueError(f"Table '{t_config.name}' must have either 'path' or 'db_connection' configured.")
+            data_model = DataModel(tables=loaded_tables, relationships=request.relationships)
+        elif request.file_path:
+            df = read_dataset(request.file_path)
+            data_model = DataModel(tables={"df": df}, relationships={})
+        else:
+            raise ValueError("Either 'file_path' or 'tables' must be provided.")
+
+        # Apply global filters first
+        if request.filters:
+            for col, val in request.filters.items():
+                for tbl_name, df in data_model.tables.items():
+                    if col in df.columns:
+                        if isinstance(val, list):
+                            data_model.tables[tbl_name] = df[df[col].isin(val)]
+                        else:
+                            data_model.tables[tbl_name] = df[df[col] == val]
+
+        # Merge data model into a single DataFrame
+        df_merged = merge_data_model(data_model)
+        if df_merged.empty:
+            raise ValueError("Dataset is empty.")
+
+        # Resolve metric column
+        if request.metric_column not in df_merged.columns:
+            for col in df_merged.columns:
+                if col.lower() == request.metric_column.lower():
+                    request.metric_column = col
+                    break
+
+        # Filter by hovered value
+        if request.target_column in df_merged.columns:
+            # Handle potential string conversions for matching
+            df_filtered = df_merged[df_merged[request.target_column].astype(str) == str(request.target_value)]
+        else:
+            df_filtered = df_merged
+
+        # Identify date column for historical trend
+        date_col = None
+        for col in df_filtered.columns:
+            if pd.api.types.is_datetime64_any_dtype(df_filtered[col]):
+                date_col = col
+                break
+        
+        # If no strict datetime, check string columns that might be dates
+        if not date_col:
+            for col in df_filtered.columns:
+                if 'date' in col.lower() or 'month' in col.lower() or 'year' in col.lower():
+                    date_col = col
+                    break
+                    
+        # Grouping logic
+        if date_col:
+            # Group by date column and sum the metric
+            # Drop NaNs in date
+            df_trend = df_filtered.dropna(subset=[date_col])
+            
+            # Sort chronologically if it's a datetime
+            if pd.api.types.is_datetime64_any_dtype(df_trend[date_col]):
+                df_trend = df_trend.sort_values(by=date_col)
+                df_trend[date_col] = df_trend[date_col].dt.strftime('%Y-%m-%d')
+            
+            grouped = df_trend.groupby(date_col)[request.metric_column].sum().reset_index()
+            # Rename for uniform frontend parsing
+            grouped = grouped.rename(columns={date_col: 'label', request.metric_column: 'value'})
+            
+            data_out = grouped.to_dict(orient="records")
+            return TooltipResponse(success=True, date_column=date_col, data=data_out)
+        else:
+            # No date column found, fallback to distribution of another categorical column
+            cat_cols = df_filtered.select_dtypes(include=['object', 'category']).columns
+            fallback_col = None
+            for c in cat_cols:
+                if c != request.target_column and df_filtered[c].nunique() > 1:
+                    fallback_col = c
+                    break
+                    
+            if fallback_col:
+                grouped = df_filtered.groupby(fallback_col)[request.metric_column].sum().reset_index()
+                grouped = grouped.rename(columns={fallback_col: 'label', request.metric_column: 'value'})
+                data_out = grouped.to_dict(orient="records")
+                return TooltipResponse(success=True, date_column=fallback_col, data=data_out)
+            else:
+                # Absolute fallback
+                val = float(df_filtered[request.metric_column].sum())
+                return TooltipResponse(success=True, date_column="Total", data=[{"label": "Total", "value": val}])
+
+    except Exception as e:
+        logger.error(f"Error in tooltip-data: {str(e)}", exc_info=True)
+        return TooltipResponse(success=False, data=[], error=str(e))
 
 if __name__ == "__main__":
     import uvicorn
