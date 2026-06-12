@@ -48,6 +48,8 @@ The `chart_config` dictionary MUST have the following structure:
     "mark": "bar" | "line" | "scatter" | "pie" | "area",
     "columns": ["X_Axis_Column"],  # X-axis / dimensions
     "rows": ["Y_Axis_Column"],     # Y-axis / measures
+    "secondary_rows": ["Y2_Axis_Column"], # Optional: for dual-axis combo charts
+    "secondary_mark": "line",             # Optional: mark type for the secondary axis
     "color": "Color_Column_or_None",
     "size": "Size_Column_or_None",
     "detail": "Detail_Column_or_None",

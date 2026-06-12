@@ -338,13 +338,18 @@ def detect_anomalies(
 def build_figure_from_grammar(df: pd.DataFrame, chart_config: Dict[str, Any]) -> go.Figure:
     """
     Builds a Plotly figure based on Tableau Visual Grammar shelves.
+    Supports Dual-Axis & Combo charts via `secondary_rows`.
     """
+    from plotly.subplots import make_subplots
+    
     mark = chart_config.get("mark", "bar").lower()
     columns = chart_config.get("columns", [])
     rows = chart_config.get("rows", [])
+    secondary_rows = chart_config.get("secondary_rows", [])
+    secondary_mark = chart_config.get("secondary_mark", "line").lower()
     color = chart_config.get("color")
     size = chart_config.get("size")
-    detail = chart_config.get("detail")  # For grouping without color
+    detail = chart_config.get("detail")
     label = chart_config.get("label")
     title = chart_config.get("title", "")
 
@@ -360,26 +365,64 @@ def build_figure_from_grammar(df: pd.DataFrame, chart_config: Dict[str, Any]) ->
         kwargs["text"] = label
         
     if detail and detail in df.columns and mark in ['line', 'scatter']:
-        if 'color' not in kwargs: # Detail is usually for separation when color isn't used
+        if 'color' not in kwargs:
             kwargs['color'] = detail
         elif kwargs.get('color') != detail:
-            kwargs['symbol'] = detail # Fallback mapping detail to symbol for scatter
+            kwargs['symbol'] = detail
 
     try:
-        if mark == "bar":
-            fig = px.bar(df, x=x_col, y=y_col, title=title, **kwargs)
-        elif mark == "line":
-            fig = px.line(df, x=x_col, y=y_col, title=title, **kwargs)
-        elif mark == "scatter":
-            fig = px.scatter(df, x=x_col, y=y_col, title=title, **kwargs)
-        elif mark == "pie":
-            names = x_col or color
-            values = y_col
-            fig = px.pie(df, names=names, values=values, title=title, **kwargs)
-        elif mark == "area":
-            fig = px.area(df, x=x_col, y=y_col, title=title, **kwargs)
+        def build_single_fig(df_sub, p_mark, p_x, p_y, p_kwargs, p_title=""):
+            if p_mark == "bar":
+                return px.bar(df_sub, x=p_x, y=p_y, title=p_title, **p_kwargs)
+            elif p_mark == "line":
+                return px.line(df_sub, x=p_x, y=p_y, title=p_title, **p_kwargs)
+            elif p_mark == "scatter":
+                return px.scatter(df_sub, x=p_x, y=p_y, title=p_title, **p_kwargs)
+            elif p_mark == "pie":
+                names = p_x or p_kwargs.get("color")
+                return px.pie(df_sub, names=names, values=p_y, title=p_title, **p_kwargs)
+            elif p_mark == "area":
+                return px.area(df_sub, x=p_x, y=p_y, title=p_title, **p_kwargs)
+            else:
+                return px.bar(df_sub, x=p_x, y=p_y, title=p_title, **p_kwargs)
+
+        fig1 = build_single_fig(df, mark, x_col, y_col, kwargs, title)
+        
+        # Dual-Axis logic
+        if secondary_rows and secondary_rows[0] in df.columns and mark != "pie":
+            y2_col = secondary_rows[0]
+            fig2 = build_single_fig(df, secondary_mark, x_col, y2_col, kwargs)
+            
+            # Merge into a single subplot with dual y-axis
+            combo_fig = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            # Add primary traces
+            for trace in fig1.data:
+                # Update name to ensure it's labeled appropriately if single trace
+                if not getattr(trace, 'name', None) or trace.name.startswith('trace'):
+                    trace.name = y_col
+                combo_fig.add_trace(trace, secondary_y=False)
+                
+            # Add secondary traces
+            for trace in fig2.data:
+                if not getattr(trace, 'name', None) or trace.name.startswith('trace'):
+                    trace.name = y2_col
+                # Update color for secondary trace to distinguish if it's identical
+                if len(fig2.data) == 1 and len(fig1.data) == 1:
+                    # Give it a different color manually if not split by color
+                    if not color:
+                        trace.line.color = '#f59e0b' # Amber for secondary
+                        trace.marker.color = '#f59e0b'
+                combo_fig.add_trace(trace, secondary_y=True)
+                
+            combo_fig.update_layout(title=title)
+            combo_fig.layout.yaxis.title = y_col
+            combo_fig.layout.yaxis2.title = y2_col
+            combo_fig.layout.barmode = fig1.layout.barmode # Copy barmode if stacked
+            
+            fig = combo_fig
         else:
-            fig = px.bar(df, x=x_col, y=y_col, title=title, **kwargs)
+            fig = fig1
             
         fig.update_layout(
             template="plotly_white",
@@ -389,8 +432,10 @@ def build_figure_from_grammar(df: pd.DataFrame, chart_config: Dict[str, Any]) ->
             paper_bgcolor='rgba(0,0,0,0)'
         )
         fig.update_xaxes(showgrid=False)
-        fig.update_yaxes(gridcolor='rgba(0,0,0,0.1)', zerolinecolor='rgba(0,0,0,0.2)')
-        
+        fig.update_yaxes(gridcolor='rgba(0,0,0,0.1)', zerolinecolor='rgba(0,0,0,0.2)', secondary_y=False)
+        if secondary_rows:
+            fig.update_yaxes(showgrid=False, zerolinecolor='rgba(0,0,0,0.2)', secondary_y=True)
+            
         return fig
     except Exception as e:
         raise ValueError(f"Error building figure from grammar: {str(e)}")
