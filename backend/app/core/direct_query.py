@@ -22,7 +22,8 @@ def execute_direct_query(prompt: str, connection_string: str, api_key: str) -> p
             model=model_name, 
             temperature=0.0, 
             openai_api_key=api_key, 
-            openai_api_base="https://api.groq.com/openai/v1"
+            openai_api_base="https://api.groq.com/openai/v1",
+            base_url="https://api.groq.com/openai/v1"
         )
     else:
         llm = ChatOpenAI(model=model_name, temperature=0.0, openai_api_key=api_key)

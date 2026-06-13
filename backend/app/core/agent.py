@@ -226,7 +226,8 @@ def generate_chart_with_retry(
             model=model_name,
             temperature=0.0,
             openai_api_key=api_key,
-            openai_api_base="https://api.groq.com/openai/v1"
+            openai_api_base="https://api.groq.com/openai/v1",
+            base_url="https://api.groq.com/openai/v1"
         )
     else:
         llm = ChatOpenAI(

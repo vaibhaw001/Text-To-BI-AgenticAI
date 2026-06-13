@@ -338,7 +338,8 @@ async def explain_insight(request: InsightRequest, x_api_key: Optional[str] = He
                 model=model_name,
                 temperature=0.0,
                 openai_api_key=x_api_key,
-                openai_api_base="https://api.groq.com/openai/v1"
+                openai_api_base="https://api.groq.com/openai/v1",
+                base_url="https://api.groq.com/openai/v1"
             )
         else:
             from langchain_openai import ChatOpenAI
