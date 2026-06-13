@@ -142,6 +142,61 @@ Provide ONLY the descriptive text insight. Do not include introductory phrases l
     except Exception as e:
         return f"Unable to generate AI data insights: {str(e)}"
 
+def resolve_api_key_and_provider(api_key: str) -> Tuple[str, str, str]:
+    """
+    Resolves the api_key, provider, and model_name.
+    If api_key is missing or is 'default', attempts to fall back to environment variables.
+    """
+    import os
+    if not api_key or api_key.strip().lower() in ["", "default", "env", "backend", "none", "placeholder"]:
+        # Try to resolve from environment variables
+        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        if provider == "groq":
+            api_key = os.getenv("GROQ_API_KEY")
+            model_name = os.getenv("LLM_MODEL", "llama3-70b-8192")
+        elif provider == "google":
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            model_name = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            model_name = os.getenv("LLM_MODEL", "gpt-4o")
+            
+        # Fallback search if LLM_PROVIDER's key isn't set
+        if not api_key:
+            api_key = os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GROQ_API_KEY")
+            if api_key:
+                if api_key.startswith("gsk_"):
+                    provider = "groq"
+                    model_name = os.getenv("LLM_MODEL", "llama3-70b-8192")
+                elif api_key.startswith("AIza"):
+                    provider = "google"
+                    model_name = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+                elif api_key.startswith("sk-"):
+                    provider = "openai"
+                    model_name = os.getenv("LLM_MODEL", "gpt-4o")
+    else:
+        # Explicit api_key provided
+        if api_key.startswith("gsk_"):
+            provider = "groq"
+            model_name = "llama3-70b-8192"
+        elif api_key.startswith("AIza"):
+            provider = "google"
+            model_name = "gemini-1.5-flash"
+        elif api_key.startswith("sk-"):
+            provider = "openai"
+            model_name = "gpt-4o"
+        else:
+            provider = os.getenv("LLM_PROVIDER", "openai").lower()
+            model_name = os.getenv("LLM_MODEL", "gpt-4o")
+
+    if not api_key:
+        raise ValueError(
+            "API Key is required. Please set OPENAI_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY "
+            "in your backend .env file, or enter it in the frontend settings."
+        )
+
+    return api_key, provider, model_name
+
 def generate_chart_with_retry(
     prompt: str,
     schema_summary: str,
@@ -157,11 +212,7 @@ def generate_chart_with_retry(
     Returns:
         Tuple[go.Figure, List[dict], str, str]: The Plotly Figure, execution history, final code, and AI insights.
     """
-    if not api_key:
-        raise ValueError("API Key is required. Please provide it in the frontend settings.")
-        
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    model_name = os.getenv("LLM_MODEL", "gpt-4o")
+    api_key, provider, model_name = resolve_api_key_and_provider(api_key)
     
     if provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI

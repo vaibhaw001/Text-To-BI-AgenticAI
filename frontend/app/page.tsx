@@ -360,11 +360,10 @@ export default function Dashboard() {
 
   const handleSaveApiKey = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (tempApiKey.trim()) {
-      setApiKey(tempApiKey.trim());
-      localStorage.setItem('llm_api_key', tempApiKey.trim());
-      setShowApiModal(false);
-    }
+    const key = tempApiKey.trim() || 'default';
+    setApiKey(key);
+    localStorage.setItem('llm_api_key', key);
+    setShowApiModal(false);
   };
 
   // Load bookmarks on mount
@@ -1026,22 +1025,36 @@ export default function Dashboard() {
             <p className="text-sm text-zinc-400 mb-4">
               Please provide your LLM API Key (e.g. Groq, OpenAI) to continue. This key will be stored locally in your browser.
             </p>
-            <form onSubmit={handleSaveApiKey}>
+            <form onSubmit={handleSaveApiKey} className="flex flex-col gap-3">
               <input
                 type="password"
-                placeholder="gsk_..."
+                placeholder="gsk_... or leave blank for backend default"
                 value={tempApiKey}
                 onChange={(e) => setTempApiKey(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
+                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 autoFocus
-                required
               />
-              <button
-                type="submit"
-                className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-semibold transition-colors"
-              >
-                Save & Continue
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-semibold transition-colors text-sm"
+                >
+                  Save & Continue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempApiKey('');
+                    const key = 'default';
+                    setApiKey(key);
+                    localStorage.setItem('llm_api_key', key);
+                    setShowApiModal(false);
+                  }}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg font-semibold transition-colors text-xs"
+                >
+                  Use Backend Keys
+                </button>
+              </div>
             </form>
           </div>
         </div>

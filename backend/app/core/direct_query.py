@@ -11,11 +11,8 @@ def execute_direct_query(prompt: str, connection_string: str, api_key: str) -> p
     Translates a natural language query into SQL, executes it against the database,
     and returns the result as a Pandas DataFrame.
     """
-    if not api_key:
-        raise ValueError("API Key is required. Please provide it in the frontend settings.")
-        
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    model_name = os.getenv("LLM_MODEL", "gpt-4o")
+    from app.core.agent import resolve_api_key_and_provider
+    api_key, provider, model_name = resolve_api_key_and_provider(api_key)
     
     if provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI

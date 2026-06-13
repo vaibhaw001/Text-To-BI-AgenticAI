@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig, InsightRequest, InsightResponse, TooltipRequest, TooltipResponse
 from app.core.data import read_dataset, DataModel
-from app.core.agent import generate_chart_with_retry
+from app.core.agent import generate_chart_with_retry, resolve_api_key_and_provider
 from app.core.analytics import merge_data_model, perform_change_attribution, perform_key_influencers, generate_analytics_summary
 
 # Configure logging
@@ -323,12 +323,7 @@ async def explain_insight(request: InsightRequest, x_api_key: Optional[str] = He
                 else:
                     raise ValueError(f"Metric column '{request.metric_column}' was not found, and no numeric fallback column exists.")
 
-        if not x_api_key:
-            raise ValueError("API Key is required. Please provide it in the frontend settings.")
-            
-        # 3. Instantiate LLM based on environment configuration
-        provider = os.getenv("LLM_PROVIDER", "openai").lower()
-        model_name = os.getenv("LLM_MODEL", "gpt-4o")
+        x_api_key, provider, model_name = resolve_api_key_and_provider(x_api_key)
         
         if provider == "google":
             from langchain_google_genai import ChatGoogleGenerativeAI
