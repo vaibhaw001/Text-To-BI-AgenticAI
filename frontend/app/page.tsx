@@ -45,7 +45,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>([]);
   const [apiKey, setApiKey] = useState<string>('');
-  const [showApiModal, setShowApiModal] = useState<boolean>(true);
+  const [showApiModal, setShowApiModal] = useState<boolean>(false);
   const [tempApiKey, setTempApiKey] = useState<string>('');
   
   // Page Report tabs states (Power BI style)
@@ -517,6 +517,10 @@ export default function Dashboard() {
   };
 
   const refreshAllWidgets = async (activeFilters: Record<string, any>) => {
+    if (!apiKey) {
+      setShowApiModal(true);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -613,6 +617,11 @@ export default function Dashboard() {
   const handleAddWidget = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
+
+    if (!apiKey) {
+      setShowApiModal(true);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -835,6 +844,11 @@ export default function Dashboard() {
 
   const runExplainInsight = async (questionText?: string, compVal?: any) => {
     if (!clickPopup) return;
+    
+    if (!apiKey) {
+      setShowApiModal(true);
+      return;
+    }
     
     const targetCol = clickPopup.colName;
     const targetVal = clickPopup.value;
