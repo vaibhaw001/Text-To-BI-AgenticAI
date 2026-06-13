@@ -133,6 +133,7 @@ export default function Dashboard() {
 
   // Responsive container width hooks from react-grid-layout v2+
   const { width, containerRef, mounted } = useContainerWidth();
+  const isDesktop = width > 768;
 
   // Custom relationship builder states (Power BI style)
   const [useMultipleTables, setUseMultipleTables] = useState(false);
@@ -1078,122 +1079,126 @@ export default function Dashboard() {
           </div>
 
           {/* Prompt Form */}
-          <form onSubmit={handleAddWidget} className="flex-1 w-full max-w-3xl flex flex-col sm:flex-row items-center gap-2">
-            <div className="relative flex-1 w-full">
-              <input
-                type="text"
-                placeholder="Ask for a visualization (e.g. 'Show me sales by region as a pie chart')..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                className="w-full pl-4 pr-16 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-sm text-white placeholder-zinc-500 backdrop-blur-sm transition-all"
-                disabled={isLoading}
-              />
-              <button 
-                type="button" 
-                onClick={() => setUseMultipleTables(!useMultipleTables)}
-                title="Toggle Relational Modeling Options"
-                className={`absolute right-3 top-2.5 text-xs font-semibold px-2 py-1 rounded transition-colors ${useMultipleTables ? 'bg-purple-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
-              >
-                Model
-              </button>
-            </div>
-
-            {!useMultipleTables && (
-              <div className="relative w-full sm:w-64">
+          <form onSubmit={handleAddWidget} className="flex-1 w-full max-w-3xl flex flex-col gap-2">
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+              <div className="relative flex-1 w-full">
                 <input
-                  type="file"
-                  id="single-file-upload"
-                  className="hidden"
-                  accept=".csv,.xlsx,.xls"
-                  disabled={isLoading || uploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileUpload(file);
-                  }}
+                  type="text"
+                  placeholder="Ask for a visualization (e.g. 'Show me sales by region as a pie chart')..."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="w-full pl-4 pr-16 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-sm text-white placeholder-zinc-500 backdrop-blur-sm transition-all"
+                  disabled={isLoading}
                 />
-                <label
-                  htmlFor="single-file-upload"
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 text-xs text-zinc-300 backdrop-blur-sm cursor-pointer hover:bg-zinc-850 hover:border-zinc-700 transition-all ${uploading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                <button 
+                  type="button" 
+                  onClick={() => setUseMultipleTables(!useMultipleTables)}
+                  title="Toggle Relational Modeling Options"
+                  className={`absolute right-3 top-2.5 text-xs font-semibold px-2 py-1 rounded transition-colors ${useMultipleTables ? 'bg-purple-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
                 >
-                  <span className="truncate max-w-[170px]">
-                    {uploading ? (
-                      <span className="flex items-center gap-1">
-                        <span className="h-3 w-3 animate-spin rounded-full border border-zinc-500 border-t-white"></span>
-                        Uploading...
+                  Model
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto">
+                {!useMultipleTables && (
+                  <div className="relative col-span-2 sm:col-span-1 sm:w-48">
+                    <input
+                      type="file"
+                      id="single-file-upload"
+                      className="hidden"
+                      accept=".csv,.xlsx,.xls"
+                      disabled={isLoading || uploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileUpload(file);
+                      }}
+                    />
+                    <label
+                      htmlFor="single-file-upload"
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 text-xs text-zinc-300 backdrop-blur-sm cursor-pointer hover:bg-zinc-850 hover:border-zinc-700 transition-all ${uploading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    >
+                      <span className="truncate max-w-[120px] sm:max-w-[170px]">
+                        {uploading ? (
+                          <span className="flex items-center gap-1">
+                            <span className="h-3 w-3 animate-spin rounded-full border border-zinc-500 border-t-white"></span>
+                            Uploading...
+                          </span>
+                        ) : uploadedFileName ? (
+                          `📁 ${uploadedFileName}`
+                        ) : (
+                          '📁 Upload Dataset'
+                        )}
                       </span>
-                    ) : uploadedFileName ? (
-                      `📁 ${uploadedFileName}`
-                    ) : (
-                      '📁 Upload Dataset'
-                    )}
-                  </span>
-                  {!uploading && !uploadedFileName && (
-                    <span className="text-[10px] text-purple-400 font-medium px-1.5 py-0.5 rounded bg-purple-950/40 border border-purple-800/30">
-                      Browse
+                      {!uploading && !uploadedFileName && (
+                        <span className="text-[10px] text-purple-400 font-medium px-1.5 py-0.5 rounded bg-purple-950/40 border border-purple-800/30">
+                          Browse
+                        </span>
+                      )}
+                      {!uploading && uploadedFileName && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setFilePath('');
+                            setUploadedFileName(null);
+                            const fileInput = document.getElementById('single-file-upload') as HTMLInputElement;
+                            if (fileInput) fileInput.value = '';
+                          }}
+                          className="text-[10px] text-red-400 font-medium px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/30 hover:bg-red-900/50"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </label>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoading || !prompt.trim()}
+                  className={`px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-600/35 hover:shadow-indigo-500/50 active:scale-95 flex items-center justify-center gap-2 ${useMultipleTables ? 'col-span-2' : 'col-span-2 sm:col-span-1'} sm:w-auto`}
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                      Generating...
+                    </>
+                  ) : (
+                    'Generate Chart'
+                  )}
+                </button>
+
+                {widgets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 font-medium text-sm transition-all active:scale-95 flex items-center justify-center gap-2 no-print col-span-1 sm:w-auto"
+                    title="Save Entire Dashboard as PDF"
+                  >
+                    🖨️ Export PDF
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowBookmarksPanel(!showBookmarksPanel)}
+                  className={`px-4 py-2.5 rounded-lg border text-sm font-medium transition-all active:scale-95 flex items-center justify-center gap-2 no-print ${widgets.length > 0 ? 'col-span-1' : 'col-span-2'} sm:w-auto ${
+                    showBookmarksPanel 
+                      ? 'border-purple-500/50 bg-purple-950/20 text-purple-300 shadow-md shadow-purple-950/40' 
+                      : 'border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300'
+                  }`}
+                  title="Toggle Executive Views & Bookmarks"
+                >
+                  🔖 Bookmarks
+                  {bookmarks.length > 0 && (
+                    <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-purple-600 text-white shadow shadow-purple-500/50">
+                      {bookmarks.length}
                     </span>
                   )}
-                  {!uploading && uploadedFileName && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setFilePath('');
-                        setUploadedFileName(null);
-                        const fileInput = document.getElementById('single-file-upload') as HTMLInputElement;
-                        if (fileInput) fileInput.value = '';
-                      }}
-                      className="text-[10px] text-red-400 font-medium px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/30 hover:bg-red-900/50"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </label>
+                </button>
               </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading || !prompt.trim()}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-600/35 hover:shadow-indigo-500/50 active:scale-95 flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
-                  Generating...
-                </>
-              ) : (
-                'Generate Chart'
-              )}
-            </button>
-
-            {widgets.length > 0 && (
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 font-medium text-sm transition-all active:scale-95 flex items-center justify-center gap-2 no-print"
-                title="Save Entire Dashboard as PDF"
-              >
-                🖨️ Export PDF
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowBookmarksPanel(!showBookmarksPanel)}
-              className={`w-full sm:w-auto px-4 py-2.5 rounded-lg border text-sm font-medium transition-all active:scale-95 flex items-center justify-center gap-2 no-print ${
-                showBookmarksPanel 
-                  ? 'border-purple-500/50 bg-purple-950/20 text-purple-300 shadow-md shadow-purple-950/40' 
-                  : 'border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300'
-              }`}
-              title="Toggle Executive Views & Bookmarks"
-            >
-              🔖 Bookmarks
-              {bookmarks.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-purple-600 text-white shadow shadow-purple-500/50">
-                  {bookmarks.length}
-                </span>
-              )}
-            </button>
+            </div>
           </form>
         </div>
       </header>
@@ -1855,6 +1860,8 @@ export default function Dashboard() {
               onLayoutChange={handleLayoutChange}
               draggableHandle=".widget-drag-handle"
               margin={[16, 16]}
+              isDraggable={isDesktop}
+              isResizable={isDesktop}
             >
               {widgets
                 .filter((w) => (w.pageId || 'page_default') === activePageId)
@@ -2040,8 +2047,11 @@ export default function Dashboard() {
       {/* Floating Context Menu Popover */}
       {clickPopup && clickPopup.visible && (
         <div 
-          className="fixed z-50 min-w-[200px] bg-zinc-950/95 border border-zinc-800 rounded-lg shadow-xl py-1 animate-fadeIn no-print backdrop-blur-md"
-          style={{ top: clickPopup.y + 5, left: clickPopup.x + 5 }}
+          className="fixed z-50 min-w-[220px] max-w-[280px] bg-zinc-950/95 border border-zinc-800 rounded-lg shadow-xl py-1 animate-fadeIn no-print backdrop-blur-md"
+          style={{ 
+            top: Math.min(clickPopup.y + 5, typeof window !== 'undefined' ? window.innerHeight - 180 : 500), 
+            left: Math.min(clickPopup.x + 5, typeof window !== 'undefined' ? window.innerWidth - 240 : 100)
+          }}
         >
           {/* Close Backdrop */}
           <div className="fixed inset-0 z-[-1]" onClick={() => setClickPopup(null)} />
@@ -2089,7 +2099,7 @@ export default function Dashboard() {
 
       {/* Slide-over Analytics Drawer */}
       <div 
-        className={`fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-zinc-950 border-l border-zinc-800 shadow-2xl transition-transform duration-300 transform no-print flex flex-col justify-between ${
+        className={`fixed inset-y-0 right-0 z-50 w-full max-w-full sm:max-w-lg bg-zinc-950 border-l border-zinc-800 shadow-2xl transition-transform duration-300 transform no-print flex flex-col justify-between ${
           aiAnalysisState.isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

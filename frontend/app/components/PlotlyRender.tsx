@@ -120,8 +120,8 @@ export default function PlotlyRender({ data, layout, frames, config, onChartClic
         <div 
           className="fixed z-50 bg-zinc-950/95 border border-zinc-800 rounded-lg shadow-xl py-2 px-3 animate-fadeIn pointer-events-none backdrop-blur-md"
           style={{ 
-            top: hoverState.y + 15, 
-            left: hoverState.x + 15,
+            top: Math.min(hoverState.y + 15, typeof window !== 'undefined' ? window.innerHeight - 200 : 500), 
+            left: Math.min(hoverState.x + 15, typeof window !== 'undefined' ? window.innerWidth - 250 : 100),
             // ensure it doesn't go off-screen
             transform: 'translate(0, 0)'
           }}
