@@ -25,3 +25,4 @@ frontend/.env.production.local
 .idea/
 .DS_Store
 Thumbs.db
+backend/data/
