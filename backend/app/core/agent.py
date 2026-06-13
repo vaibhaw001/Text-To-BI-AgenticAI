@@ -195,6 +195,9 @@ def resolve_api_key_and_provider(api_key: str) -> Tuple[str, str, str]:
             "in your backend .env file, or enter it in the frontend settings."
         )
 
+    if model_name == "gemini-1.5-flash":
+        model_name = "gemini-2.5-flash"
+
     return api_key, provider, model_name
 
 def generate_chart_with_retry(
