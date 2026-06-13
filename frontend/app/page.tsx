@@ -176,7 +176,7 @@ export default function Dashboard() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('http://127.0.0.1:8000/api/upload', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -207,7 +207,7 @@ export default function Dashboard() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('http://127.0.0.1:8000/api/upload', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -254,7 +254,7 @@ export default function Dashboard() {
     setTablesInput(copy);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/test-db', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/test-db`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -565,7 +565,7 @@ export default function Dashboard() {
           }));
         }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/generate-chart`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/generate-chart`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -667,7 +667,7 @@ export default function Dashboard() {
         }));
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/generate-chart`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/generate-chart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -913,7 +913,7 @@ export default function Dashboard() {
         }));
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/explain-insight`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/explain-insight`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
