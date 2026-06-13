@@ -156,7 +156,7 @@ def resolve_api_key_and_provider(api_key: str) -> Tuple[str, str, str]:
             model_name = os.getenv("LLM_MODEL", "llama3-70b-8192")
         elif provider == "google":
             api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-            model_name = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+            model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
         else:
             api_key = os.getenv("OPENAI_API_KEY")
             model_name = os.getenv("LLM_MODEL", "gpt-4o")
@@ -170,7 +170,7 @@ def resolve_api_key_and_provider(api_key: str) -> Tuple[str, str, str]:
                     model_name = os.getenv("LLM_MODEL", "llama3-70b-8192")
                 elif api_key.startswith("AIza"):
                     provider = "google"
-                    model_name = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+                    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
                 elif api_key.startswith("sk-"):
                     provider = "openai"
                     model_name = os.getenv("LLM_MODEL", "gpt-4o")
@@ -181,7 +181,7 @@ def resolve_api_key_and_provider(api_key: str) -> Tuple[str, str, str]:
             model_name = "llama3-70b-8192"
         elif api_key.startswith("AIza"):
             provider = "google"
-            model_name = "gemini-1.5-flash"
+            model_name = "gemini-2.5-flash"
         elif api_key.startswith("sk-"):
             provider = "openai"
             model_name = "gpt-4o"
