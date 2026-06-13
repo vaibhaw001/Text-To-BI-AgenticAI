@@ -38,12 +38,15 @@ interface DashboardBookmark {
 
 export default function Dashboard() {
   const [prompt, setPrompt] = useState('');
-  const [filePath, setFilePath] = useState('f:\\vaibhaw\\ai agentic da\\backend\\tests\\sample_sales.csv');
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>('sample_sales.csv');
+  const [filePath, setFilePath] = useState('');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [showApiModal, setShowApiModal] = useState<boolean>(true);
+  const [tempApiKey, setTempApiKey] = useState<string>('');
   
   // Page Report tabs states (Power BI style)
   const [pages, setPages] = useState<{ id: string; name: string }[]>([
@@ -346,6 +349,24 @@ export default function Dashboard() {
     }
   }, [globalFilters]);
 
+  // API Key on mount
+  useEffect(() => {
+    const savedKey = localStorage.getItem('llm_api_key');
+    if (savedKey) {
+      setApiKey(savedKey);
+      setShowApiModal(false);
+    }
+  }, []);
+
+  const handleSaveApiKey = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (tempApiKey.trim()) {
+      setApiKey(tempApiKey.trim());
+      localStorage.setItem('llm_api_key', tempApiKey.trim());
+      setShowApiModal(false);
+    }
+  };
+
   // Load bookmarks on mount
   useEffect(() => {
     const saved = localStorage.getItem('bi_dashboard_bookmarks');
@@ -540,10 +561,11 @@ export default function Dashboard() {
           }));
         }
 
-        const response = await fetch('http://127.0.0.1:8000/api/generate-chart', {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/generate-chart`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-API-Key': apiKey,
           },
           body: JSON.stringify(payload),
         });
@@ -636,10 +658,11 @@ export default function Dashboard() {
         }));
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/generate-chart', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/generate-chart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
         },
         body: JSON.stringify(payload),
       });
@@ -876,9 +899,12 @@ export default function Dashboard() {
         }));
       }
 
-      const res = await fetch('http://127.0.0.1:8000/api/explain-insight', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/explain-insight`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey
+        },
         body: JSON.stringify(payload)
       });
 
@@ -978,6 +1004,35 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col min-h-screen">
+      {/* API Key Modal */}
+      {showApiModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-700 p-6 rounded-xl shadow-2xl max-w-md w-full">
+            <h2 className="text-xl font-bold text-white mb-2">Welcome to Plotlytics</h2>
+            <p className="text-sm text-zinc-400 mb-4">
+              Please provide your LLM API Key (e.g. Groq, OpenAI) to continue. This key will be stored locally in your browser.
+            </p>
+            <form onSubmit={handleSaveApiKey}>
+              <input
+                type="password"
+                placeholder="gsk_..."
+                value={tempApiKey}
+                onChange={(e) => setTempApiKey(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
+                autoFocus
+                required
+              />
+              <button
+                type="submit"
+                className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-semibold transition-colors"
+              >
+                Save & Continue
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <header className="border-b border-[#001f7f]/10 bg-white/70 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -987,6 +1042,12 @@ export default function Dashboard() {
               <h1 className="text-lg font-bold tracking-tight text-[#001f7f]">Plotlytics</h1>
               <p className="text-xs text-zinc-500">Turning Text Into Clarity</p>
             </div>
+            <button
+              onClick={() => { setTempApiKey(apiKey); setShowApiModal(true); }}
+              className="text-xs text-zinc-400 hover:text-purple-500 ml-4 border border-zinc-200 px-2 py-1 rounded transition-colors"
+            >
+              🔑 API Key
+            </button>
           </div>
 
           {/* Prompt Form */}
@@ -1039,10 +1100,25 @@ export default function Dashboard() {
                       '📁 Upload Dataset'
                     )}
                   </span>
-                  {!uploading && (
+                  {!uploading && !uploadedFileName && (
                     <span className="text-[10px] text-purple-400 font-medium px-1.5 py-0.5 rounded bg-purple-950/40 border border-purple-800/30">
                       Browse
                     </span>
+                  )}
+                  {!uploading && uploadedFileName && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setFilePath('');
+                        setUploadedFileName(null);
+                        const fileInput = document.getElementById('single-file-upload') as HTMLInputElement;
+                        if (fileInput) fileInput.value = '';
+                      }}
+                      className="text-[10px] text-red-400 font-medium px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/30 hover:bg-red-900/50"
+                    >
+                      Clear
+                    </button>
                   )}
                 </label>
               </div>

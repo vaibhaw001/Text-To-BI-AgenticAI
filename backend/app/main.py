@@ -4,9 +4,10 @@ import logging
 import shutil
 import pandas as pd
 import sqlalchemy as sa
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from typing import Optional
 
 from app.schema import ChartRequest, ChartResponse, DbConnectionConfig, MetricConfig, InsightRequest, InsightResponse, TooltipRequest, TooltipResponse
 from app.core.data import read_dataset, DataModel
@@ -118,7 +119,7 @@ async def test_db_connection(config: DbConnectionConfig):
         }
 
 @app.post("/api/generate-chart", response_model=ChartResponse)
-async def generate_chart(request: ChartRequest):
+async def generate_chart(request: ChartRequest, x_api_key: Optional[str] = Header(None)):
     logger.info(f"Received chart request. Prompt: {request.prompt}")
     
     try:
@@ -132,7 +133,7 @@ async def generate_chart(request: ChartRequest):
             conn_string = next(t.db_connection.connection_string for t in request.tables if t.db_connection and t.db_connection.direct_query)
             
             # Execute SQL via LLM and get result
-            df = execute_direct_query(request.prompt, conn_string)
+            df = execute_direct_query(request.prompt, conn_string, x_api_key)
             data_model = DataModel(tables={"df_direct": df}, relationships=[])
             
             # Since the data is already aggregated by the SQL query, 
@@ -206,7 +207,8 @@ async def generate_chart(request: ChartRequest):
         fig, history, final_code, insights = generate_chart_with_retry(
             prompt=request.prompt,
             schema_summary=schema_summary,
-            data_model=data_model
+            data_model=data_model,
+            api_key=x_api_key
         )
         
         # 4. Convert figure to JSON representation
@@ -244,7 +246,7 @@ async def generate_chart(request: ChartRequest):
         )
 
 @app.post("/api/explain-insight", response_model=InsightResponse)
-async def explain_insight(request: InsightRequest):
+async def explain_insight(request: InsightRequest, x_api_key: Optional[str] = Header(None)):
     import numpy as np
     logger.info(f"Received explain-insight request. Target: {request.target_column}={request.target_value}, Metric: {request.metric_column}")
     try:
@@ -321,29 +323,34 @@ async def explain_insight(request: InsightRequest):
                 else:
                     raise ValueError(f"Metric column '{request.metric_column}' was not found, and no numeric fallback column exists.")
 
+        if not x_api_key:
+            raise ValueError("API Key is required. Please provide it in the frontend settings.")
+            
         # 3. Instantiate LLM based on environment configuration
         provider = os.getenv("LLM_PROVIDER", "openai").lower()
         model_name = os.getenv("LLM_MODEL", "gpt-4o")
         
         if provider == "google":
             from langchain_google_genai import ChatGoogleGenerativeAI
-            google_api_key = os.getenv("GOOGLE_API_KEY")
-            if not google_api_key:
-                raise ValueError("GOOGLE_API_KEY is not set.")
             llm = ChatGoogleGenerativeAI(
                 model=model_name,
                 temperature=0.0,
-                google_api_key=google_api_key
+                google_api_key=x_api_key
             )
-        else:
+        elif provider == "groq":
             from langchain_openai import ChatOpenAI
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if not openai_api_key:
-                raise ValueError("OPENAI_API_KEY is not set.")
             llm = ChatOpenAI(
                 model=model_name,
                 temperature=0.0,
-                openai_api_key=openai_api_key
+                openai_api_key=x_api_key,
+                openai_api_base="https://api.groq.com/openai/v1"
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(
+                model=model_name,
+                temperature=0.0,
+                openai_api_key=x_api_key
             )
 
         # 4. Perform Statistical Analysis
@@ -530,4 +537,4 @@ if __name__ == "__main__":
     import uvicorn
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("app.main:app", host=host, port=port, reload=True)

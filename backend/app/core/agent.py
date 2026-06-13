@@ -146,6 +146,7 @@ def generate_chart_with_retry(
     prompt: str,
     schema_summary: str,
     data_model: DataModel,
+    api_key: str,
     max_retries: int = 3
 ) -> Tuple[Any, List[Dict[str, Any]], str, str]:
     """
@@ -156,27 +157,31 @@ def generate_chart_with_retry(
     Returns:
         Tuple[go.Figure, List[dict], str, str]: The Plotly Figure, execution history, final code, and AI insights.
     """
+    if not api_key:
+        raise ValueError("API Key is required. Please provide it in the frontend settings.")
+        
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
     model_name = os.getenv("LLM_MODEL", "gpt-4o")
     
     if provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if not google_api_key:
-            raise ValueError("GOOGLE_API_KEY is not set. Please check your .env configuration.")
         llm = ChatGoogleGenerativeAI(
             model=model_name,
             temperature=0.0,
-            google_api_key=google_api_key
+            google_api_key=api_key
         )
-    else:
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY is not set. Please check your .env configuration.")
+    elif provider == "groq":
         llm = ChatOpenAI(
             model=model_name,
             temperature=0.0,
-            openai_api_key=openai_api_key
+            openai_api_key=api_key,
+            openai_api_base="https://api.groq.com/openai/v1"
+        )
+    else:
+        llm = ChatOpenAI(
+            model=model_name,
+            temperature=0.0,
+            openai_api_key=api_key
         )
     
     initial_user_prompt = f"""Relational Data Model Schema:
